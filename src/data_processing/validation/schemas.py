@@ -4,8 +4,8 @@ Defines strict validation rules for all data types
 """
 from datetime import datetime
 
-import pandera as pa # noqa
-from pandera import Column, DataFrameSchema, Check
+import pandera as pa  # noqa
+from pandera import Check, Column, DataFrameSchema
 
 
 class ValidationSchemas:
@@ -202,7 +202,7 @@ class DataValidator:
             pa.errors.SchemaError: If validation fails
         """
         import pandas as pd
-        
+
         # Convert to DataFrame
         df = pd.DataFrame(data)
         
@@ -226,7 +226,7 @@ class DataValidator:
             pa.errors.SchemaError: If validation fails
         """
         import pandas as pd
-        
+
         # Convert to DataFrame
         df = pd.DataFrame(data)
         

@@ -32,6 +32,7 @@ jobs:
           NEONDB_PRODUCTION_URL: ${{ secrets.NEONDB_PRODUCTION_URL }}
           NEONDB_BACKUP_URL: ${{ secrets.NEONDB_BACKUP_URL }}
           COINGECKO_API_URL: https://api.coingecko.com/api/v3
+          MAX_ARTICLES_PER_SOURCE: 500
         run: poetry run python scripts/data_collection/collect_to_neondb.py
       
       - name: Report status

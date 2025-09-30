@@ -69,7 +69,7 @@ class NewsData(Base):
     
     # Content
     content = Column(Text, nullable=False)
-    summary = Column(String(1000), nullable=True)
+    Column(Text, nullable=True)
     
     # Metadata
     author = Column(String(200), nullable=True)
