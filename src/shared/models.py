@@ -88,9 +88,9 @@ class NewsData(Base):
 
 
 class SentimentData(Base):
-    """Sentiment analysis results"""
     __tablename__ = "sentiment_data"
     
+    # Primary key
     id = Column(Integer, primary_key=True, index=True)
     
     # Foreign key to news article
@@ -102,24 +102,26 @@ class SentimentData(Base):
     vader_neutral = Column(Float, nullable=False)
     vader_negative = Column(Float, nullable=False)
     
-    # FinBERT sentiment scores (will be added later)
+    # FinBERT sentiment scores
     finbert_compound = Column(Float, nullable=True)
     finbert_positive = Column(Float, nullable=True)
     finbert_neutral = Column(Float, nullable=True)
     finbert_negative = Column(Float, nullable=True)
+    finbert_confidence = Column(Float, nullable=True)  # Add this line
     
     # Combined scores
     combined_sentiment = Column(Float, nullable=False)
-    sentiment_category = Column(String(20), nullable=False)  # positive, negative, neutral
+    sentiment_category = Column(String(20), nullable=False)
     
     # Processing metadata
     processed_at = Column(DateTime(timezone=True), server_default=func.now())
-    model_version = Column(String(50), nullable=True)
+    model_version = Column(String(100), nullable=True)  # Add this line
     
+    # Create indexes
     __table_args__ = (
-        Index('idx_sentiment_news', 'news_data_id'),
+        Index('idx_sentiment_article', 'news_data_id'),
         Index('idx_sentiment_category', 'sentiment_category'),
-        Index('idx_sentiment_processed', 'processed_at'),
+        Index('idx_sentiment_score', 'combined_sentiment'),
     )
 
 

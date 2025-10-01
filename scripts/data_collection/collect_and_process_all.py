@@ -53,7 +53,7 @@ def main():
     print("\n→ Step 3: Processing Sentiment Analysis...")
     try:
         # Use VADER only for speed (FinBERT is too slow for automated runs)
-        processor = SentimentProcessor(use_finbert=False)
+        processor = SentimentProcessor()
         processed_count = processor.process_unprocessed_articles(target_db="local")
         
         if processed_count > 0:

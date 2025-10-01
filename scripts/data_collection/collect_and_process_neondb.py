@@ -37,8 +37,8 @@ def main():
     # Step 3: Process Sentiment
     print("\n→ Processing Sentiment Analysis on NeonDB...")
     try:
-        # VADER only for automated runs (faster)
-        processor = SentimentProcessor(use_finbert=False)
+        # Use both models
+        processor = SentimentProcessor()
         processed = processor.process_unprocessed_articles(target_db="neondb_production")
         
         if processed > 0:
