@@ -9,8 +9,8 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from src.data_processing.text_processing.vader_analyzer import VADERAnalyzer
 from src.data_processing.text_processing.finbert_analyzer import FinBERTAnalyzer
+from src.data_processing.text_processing.vader_analyzer import VADERAnalyzer
 from src.shared.database import SessionLocal
 from src.shared.logging import setup_logging
 from src.shared.models import NewsData

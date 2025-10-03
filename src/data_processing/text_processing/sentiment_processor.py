@@ -48,6 +48,7 @@ class SentimentProcessor:
             db = SessionLocal()
         elif target_db == "neondb_production":
             import os
+
             from sqlalchemy import create_engine
             from sqlalchemy.orm import sessionmaker
             
@@ -59,6 +60,7 @@ class SentimentProcessor:
             db = SessionFactory()
         elif target_db == "neondb_backup":
             import os
+
             from sqlalchemy import create_engine
             from sqlalchemy.orm import sessionmaker
             

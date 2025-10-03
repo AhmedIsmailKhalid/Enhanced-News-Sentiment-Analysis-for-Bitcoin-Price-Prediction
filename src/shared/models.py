@@ -1,7 +1,7 @@
 """
 SQLAlchemy database models
 """
-from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import JSON, Column, DateTime, Float, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.sql import func
 
 from .database import Base
@@ -126,41 +126,29 @@ class SentimentData(Base):
 
 
 class FeatureData(Base):
-    """Engineered features for ML models"""
     __tablename__ = "feature_data"
     
+    # Primary key
     id = Column(Integer, primary_key=True, index=True)
     
-    # Time identifier
-    timestamp = Column(DateTime(timezone=True), nullable=False, unique=True)
+    # Feature set identifier
+    feature_set_name = Column(String(50), nullable=False)  # 'vader' or 'finbert'
+    feature_version = Column(String(50), nullable=False)   # version tracking
     
-    # Price features
-    price_btc = Column(Float, nullable=True)
-    price_return_1h = Column(Float, nullable=True)
-    price_return_24h = Column(Float, nullable=True)
-    volatility_24h = Column(Float, nullable=True)
-    volume_24h = Column(Float, nullable=True)
+    # Timestamp for this feature row
+    timestamp = Column(DateTime(timezone=True), nullable=False)
     
-    # Sentiment features
-    sentiment_mean = Column(Float, nullable=True)
-    sentiment_std = Column(Float, nullable=True)
-    sentiment_positive_ratio = Column(Float, nullable=True)
-    news_volume = Column(Integer, nullable=True)
-    
-    # Technical indicators
-    rsi_14 = Column(Float, nullable=True)
-    sma_20 = Column(Float, nullable=True)
-    ema_12 = Column(Float, nullable=True)
-    
-    # Target variable (for training)
-    price_direction = Column(Integer, nullable=True)  # 1 for up, 0 for down
+    # Store features as JSON for flexibility
+    features = Column(JSON, nullable=False)
     
     # Metadata
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    is_complete = Column(Boolean, default=False)
     
+    # Indexes
     __table_args__ = (
-        Index('idx_feature_timestamp', 'timestamp'),
-        Index('idx_feature_complete', 'is_complete'),
-        Index('idx_feature_created', 'created_at'),
+        Index('idx_feature_set_timestamp', 'feature_set_name', 'timestamp'),
+        Index('idx_feature_version', 'feature_version'),
     )
+    
+    def __repr__(self):
+        return f"<FeatureData(set={self.feature_set_name}, timestamp={self.timestamp})>"
