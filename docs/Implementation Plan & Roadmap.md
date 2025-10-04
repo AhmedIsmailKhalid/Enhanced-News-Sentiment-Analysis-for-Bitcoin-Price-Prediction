@@ -72,7 +72,7 @@
 - **Data Validation** - Comprehensive Pandera schema validation
 
 ### **Key Deliverables**
-- Sentiment analysis pipeline (VADER + TextBlob)
+- Sentiment analysis pipeline (VADER)
 - Engineered features for price prediction models
 - ML-ready datasets with proper train/test splits
 - Feature validation and quality assurance
