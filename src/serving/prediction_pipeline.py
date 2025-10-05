@@ -126,53 +126,65 @@ class PredictionPipeline:
                 'timestamp': datetime.now().isoformat()
             }
     
-    def predict_both_models(self) -> Dict[str, Any]:
+    def predict_both_models(self, use_cached_features: bool = True) -> Dict[str, Any]:
         """
-        Generate predictions from both VADER and FinBERT models
-        Optimized: Load features once, use for both
+        Make predictions with both VADER and FinBERT models
+        
+        Args:
+            use_cached_features: Use cached features (faster) or compute on-demand
+        
+        Returns:
+            Dictionary with predictions from both models and agreement status
         """
-        _ = datetime.now()
+        import time
+        start_time = time.time()
         
         try:
-            # Step 1: Load features once for both models
-            self.logger.info("Loading VADER features...")
-            t1 = datetime.now()
-            vader_features = self.feature_server.get_latest_features('vader', self.target_db)
-            self.logger.info(f"VADER features loaded in {(datetime.now()-t1).total_seconds()*1000:.2f}ms")
+            # Get features for both models
+            if use_cached_features:
+                vader_features = self.feature_server.get_latest_features('vader', self.target_db)
+                finbert_features = self.feature_server.get_latest_features('finbert', self.target_db)
+            else:
+                vader_features = self.feature_server.compute_features_on_demand('vader', self.target_db)
+                finbert_features = self.feature_server.compute_features_on_demand('finbert', self.target_db)
             
-            self.logger.info("Loading FinBERT features...")
-            t2 = datetime.now()
-            finbert_features = self.feature_server.get_latest_features('finbert', self.target_db)
-            self.logger.info(f"FinBERT features loaded in {(datetime.now()-t2).total_seconds()*1000:.2f}ms")
-            
-            if vader_features is None or finbert_features is None:
-                return {
-                    'success': False,
-                    'error': 'Features not available',
-                    'timestamp': datetime.now().isoformat()
-                }
-            
-            # Step 2: Load both models
-            self.logger.info("Loading models...")
-            t3 = datetime.now()
+            # Load both models (will use cache if already loaded)
             vader_model_info = self.model_manager.get_model('vader', 'random_forest')
             finbert_model_info = self.model_manager.get_model('finbert', 'random_forest')
-            self.logger.info(f"Models loaded in {(datetime.now()-t3).total_seconds()*1000:.2f}ms")
             
-            # Step 3: Make predictions
-            self.logger.info("Making predictions...")
-            t4 = datetime.now()
-            _ = self._make_single_prediction(vader_features, vader_model_info, 'vader')
-            _ = self._make_single_prediction(finbert_features, finbert_model_info, 'finbert')
-            self.logger.info(f"Predictions made in {(datetime.now()-t4).total_seconds()*1000:.2f}ms")
+            # Make predictions (no need to pass use_cached_features to _make_single_prediction)
+            vader_result = self._make_single_prediction(
+                vader_features, 
+                vader_model_info, 
+                'vader'
+            )
+            finbert_result = self._make_single_prediction(
+                finbert_features, 
+                finbert_model_info, 
+                'finbert'
+            )
+            
+            # Check agreement
+            agreement = (
+                vader_result['prediction']['direction_numeric'] == 
+                finbert_result['prediction']['direction_numeric']
+            )
+            
+            # Calculate total time
+            total_time = (time.time() - start_time) * 1000
+            
+            return {
+                'vader': vader_result,
+                'finbert': finbert_result,
+                'agreement': agreement,
+                'performance': {
+                    'total_response_time_ms': total_time
+                }
+            }
             
         except Exception as e:
-            self.logger.error(f"Both models prediction failed: {e}")
-            return {
-                'success': False,
-                'error': str(e),
-                'timestamp': datetime.now().isoformat()
-            }
+            self.logger.error(f"Dual prediction failed: {e}")
+            raise
 
     def _make_single_prediction(self, features, model_info, feature_set):
         """Helper for making a single prediction"""

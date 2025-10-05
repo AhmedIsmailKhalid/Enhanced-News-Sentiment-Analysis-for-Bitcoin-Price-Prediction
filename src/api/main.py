@@ -1,132 +1,165 @@
 """
-FastAPI application for Bitcoin price prediction
-Production ML serving API
+FastAPI Application for Bitcoin Sentiment Price Prediction
+Production-grade ML model serving with prediction logging
 """
+
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import ORJSONResponse
-from pydantic import BaseModel, Field  # noqa
 
+from src.mlops.prediction_logger import PredictionLogger
 from src.serving.model_manager import ModelManager
 from src.serving.prediction_pipeline import PredictionPipeline
-from src.shared.logging import get_logger, setup_logging
+from src.shared.logging import get_logger
 
-# Initialize logging
-setup_logging()
+# Initialize logger
 logger = get_logger(__name__)
 
-# Initialize FastAPI
+# Initialize FastAPI app
 app = FastAPI(
     title="Bitcoin Sentiment Price Prediction API",
-    description="ML-powered Bitcoin price direction prediction using sentiment analysis",
-    default_response_class=ORJSONResponse,
+    description="Production ML API for Bitcoin price prediction using sentiment analysis",
     version="1.0.0"
 )
 
-# CORS middleware
+# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # In production, specify actual origins
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # Initialize components
-prediction_pipeline = PredictionPipeline(target_db="local")
 model_manager = ModelManager()
+prediction_pipeline = PredictionPipeline()
+prediction_logger = PredictionLogger()
 
 
-# Response models
-class PredictionResponse(BaseModel):
-    success: bool
-    prediction: Optional[Dict[str, Any]] = None
-    model_info: Optional[Dict[str, Any]] = None
-    performance: Optional[Dict[str, Any]] = None
-    error: Optional[str] = None
-    timestamp: str
+@app.on_event("startup")
+async def startup_event():
+    """Pre-load models on startup for faster first requests"""
+    logger.info("Starting FastAPI application...")
+    logger.info("Pre-loading default models...")
+    
+    try:
+        # Pre-load VADER random forest
+        model_manager.load_model('vader', 'random_forest')
+        logger.info("✅ Loaded VADER random_forest model")
+        
+        # Pre-load FinBERT random forest
+        model_manager.load_model('finbert', 'random_forest')
+        logger.info("✅ Loaded FinBERT random_forest model")
+        
+        logger.info("FastAPI application ready")
+    except Exception as e:
+        logger.error(f"Error during startup: {e}")
 
 
-class HealthResponse(BaseModel):
-    status: str
-    timestamp: str
-    models_loaded: int
-
-
-class ModelsListResponse(BaseModel):
-    available_models: Dict[str, list]
-
-
-# Endpoints
-@app.get("/", tags=["General"])
+@app.get("/")
 async def root():
-    """API root endpoint"""
+    """Root endpoint with API information"""
     return {
-        "message": "Bitcoin Sentiment Price Prediction API",
+        "name": "Bitcoin Sentiment Price Prediction API",
         "version": "1.0.0",
+        "status": "running",
         "endpoints": {
+            "health": "/health",
+            "models": "/models",
             "predict": "/predict",
             "predict_both": "/predict/both",
-            "health": "/health",
-            "models": "/models"
+            "reload_model": "/models/reload",
+            "recent_predictions": "/predictions/recent",
+            "model_accuracy": "/predictions/accuracy",
+            "statistics": "/predictions/statistics",
+            "drift_features": "/drift/features",
+            "drift_model": "/drift/model",
+            "drift_summary": "/drift/summary",
+            "retrain_check": "/retrain/check",
+            "retrain_execute": "/retrain/execute",
+            "retrain_both": "/retrain/both",
+            "retrain_status": "/retrain/status"
         }
     }
 
 
-@app.get("/health", response_model=HealthResponse, tags=["General"])
+@app.get("/health")
 async def health_check():
     """Health check endpoint"""
     return {
         "status": "healthy",
-        "timestamp": datetime.now().isoformat(),
-        "models_loaded": len(model_manager.loaded_models)
+        "timestamp": datetime.utcnow().isoformat(),
+        "loaded_models": len(model_manager.loaded_models)
     }
 
 
-@app.get("/models", response_model=ModelsListResponse, tags=["Models"])
+@app.get("/models")
 async def list_models():
     """List all available models"""
-    try:
-        available = model_manager.list_available_models()
-        return {"available_models": available}
-    except Exception as e:
-        logger.error(f"Failed to list models: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    return {
+        "available_models": model_manager.list_available_models()
+    }
 
 
-@app.post("/predict", response_model=PredictionResponse, tags=["Predictions"])
+@app.post("/predict")
 async def predict(
-    feature_set: str = Query(
-        "vader",
-        description="Feature set to use: 'vader' or 'finbert'",
-        regex="^(vader|finbert)$"
-    ),
-    model_type: str = Query(
-        "random_forest",
-        description="Model type: 'logistic_regression', 'random_forest', 'gradient_boosting'",
-        regex="^(logistic_regression|random_forest|gradient_boosting)$"
-    ),
-    use_cached_features: bool = Query(
-        True,
-        description="Use pre-computed features (faster) or compute on-demand"
-    )
+    feature_set: str = Query(..., description="Feature set: 'vader' or 'finbert'"),
+    model_type: str = Query(..., description="Model type: 'logistic_regression', 'random_forest', 'gradient_boosting'"),
+    use_cached_features: bool = Query(True, description="Use cached features (faster) or compute on-demand")
 ):
     """
-    Generate Bitcoin price direction prediction
+    Make a prediction with specified model
     
-    Returns prediction for 1-hour ahead price movement (up/down)
+    **Now with automatic prediction logging for MLOps monitoring**
     """
+    import time
+    start_time = time.time()
+    
     try:
-        logger.info(f"Prediction request: {feature_set}, {model_type}")
-        
+        # Make prediction
         result = prediction_pipeline.predict(
             feature_set=feature_set,
             model_type=model_type,
             use_cached_features=use_cached_features
         )
+        
+        # Calculate response time
+        response_time_ms = (time.time() - start_time) * 1000
+        result['performance']['response_time_ms'] = response_time_ms
+        
+        # Get current Bitcoin price from features (if available)
+        bitcoin_price = None
+        if 'features_used' in result.get('model_info', {}) and result['model_info']['features_used']:
+            features_dict = result['model_info'].get('features_dict', {})
+            bitcoin_price = features_dict.get('price_usd')
+        
+        # Log prediction to database
+        try:
+            prediction_id = prediction_logger.log_prediction(
+                feature_set=feature_set,
+                model_type=model_type,
+                model_version=result['model_info']['model_version'],
+                prediction=result['prediction']['direction_numeric'],
+                probability_down=result['prediction']['probability']['down'],
+                probability_up=result['prediction']['probability']['up'],
+                confidence=result['prediction']['confidence'],
+                features=result['model_info'].get('features_dict', {}),
+                response_time_ms=response_time_ms,
+                cached_features=use_cached_features,
+                bitcoin_price=bitcoin_price
+            )
+            
+            # Add prediction ID to response
+            result['prediction_id'] = prediction_id
+            logger.info(f"Prediction logged with ID: {prediction_id}")
+            
+        except Exception as log_error:
+            logger.error(f"Failed to log prediction: {log_error}")
+            result['prediction_id'] = None
+            result['logging_error'] = str(log_error)
         
         return result
         
@@ -135,73 +168,423 @@ async def predict(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/predict/both", tags=["Predictions"])
-async def predict_both():
+@app.post("/predict/both")
+async def predict_both(
+    use_cached_features: bool = Query(True, description="Use cached features (faster) or compute on-demand")
+):
     """
-    Generate predictions from both VADER and FinBERT models
-    Useful for comparison and ensemble predictions
+    Make predictions with both VADER and FinBERT models for comparison
+    
+    **Now with automatic prediction logging for both models**
     """
+    import time
+    start_time = time.time()
+    
     try:
-        logger.info("Prediction request: both models")
+        # Make predictions with both models
+        result = prediction_pipeline.predict_both_models(
+            use_cached_features=use_cached_features
+        )
         
-        result = prediction_pipeline.predict_both_models()
+        # Calculate total response time
+        total_response_time_ms = (time.time() - start_time) * 1000
+        result['performance']['total_response_time_ms'] = total_response_time_ms
+        
+        # Log VADER prediction
+        if result['vader']['success']:
+            try:
+                vader_bitcoin_price = result['vader']['model_info'].get('features_dict', {}).get('price_usd')
+                
+                vader_id = prediction_logger.log_prediction(
+                    feature_set='vader',
+                    model_type='random_forest',
+                    model_version=result['vader']['model_info']['model_version'],
+                    prediction=result['vader']['prediction']['direction_numeric'],
+                    probability_down=result['vader']['prediction']['probability']['down'],
+                    probability_up=result['vader']['prediction']['probability']['up'],
+                    confidence=result['vader']['prediction']['confidence'],
+                    features=result['vader']['model_info'].get('features_dict', {}),
+                    response_time_ms=total_response_time_ms / 2,  # Approximate
+                    cached_features=use_cached_features,
+                    bitcoin_price=vader_bitcoin_price
+                )
+                result['vader']['prediction_id'] = vader_id
+                
+            except Exception as log_error:
+                logger.error(f"Failed to log VADER prediction: {log_error}")
+                result['vader']['prediction_id'] = None
+        
+        # Log FinBERT prediction
+        if result['finbert']['success']:
+            try:
+                finbert_bitcoin_price = result['finbert']['model_info'].get('features_dict', {}).get('price_usd')
+                
+                finbert_id = prediction_logger.log_prediction(
+                    feature_set='finbert',
+                    model_type='random_forest',
+                    model_version=result['finbert']['model_info']['model_version'],
+                    prediction=result['finbert']['prediction']['direction_numeric'],
+                    probability_down=result['finbert']['prediction']['probability']['down'],
+                    probability_up=result['finbert']['prediction']['probability']['up'],
+                    confidence=result['finbert']['prediction']['confidence'],
+                    features=result['finbert']['model_info'].get('features_dict', {}),
+                    response_time_ms=total_response_time_ms / 2,  # Approximate
+                    cached_features=use_cached_features,
+                    bitcoin_price=finbert_bitcoin_price
+                )
+                result['finbert']['prediction_id'] = finbert_id
+                
+            except Exception as log_error:
+                logger.error(f"Failed to log FinBERT prediction: {log_error}")
+                result['finbert']['prediction_id'] = None
         
         return result
         
     except Exception as e:
-        logger.error(f"Both models prediction failed: {e}")
+        logger.error(f"Dual prediction failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/models/reload", tags=["Models"])
+@app.post("/models/reload")
 async def reload_model(
-    feature_set: str = Query(..., regex="^(vader|finbert)$"),
-    model_type: str = Query(..., regex="^(logistic_regression|random_forest|gradient_boosting)$")
+    feature_set: str = Query(..., description="Feature set: 'vader' or 'finbert'"),
+    model_type: str = Query(..., description="Model type to reload")
 ):
-    """
-    Reload a model (hot-swap for updates)
-    """
+    """Reload a model (hot-swap without server restart)"""
     try:
-        logger.info(f"Reloading model: {feature_set}/{model_type}")
-        
         model_info = model_manager.reload_model(feature_set, model_type)
-        
         return {
             "success": True,
-            "message": f"Model reloaded: {feature_set}/{model_type}",
-            "version": model_info['version'],
-            "timestamp": datetime.now().isoformat()
+            "message": "Model reloaded successfully",
+            "model_info": model_info
         }
-        
     except Exception as e:
         logger.error(f"Model reload failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# Startup event
-@app.on_event("startup")
-async def startup_event():
-    """Initialize models on startup"""
-    logger.info("Starting Bitcoin Prediction API...")
+@app.get("/predictions/recent")
+async def get_recent_predictions(
+    feature_set: Optional[str] = Query(None, description="Filter by feature set"),
+    model_type: Optional[str] = Query(None, description="Filter by model type"),
+    limit: int = Query(100, description="Maximum number of predictions to return"),
+    only_with_outcomes: bool = Query(False, description="Only return predictions with recorded outcomes")
+):
+    """
+    Get recent predictions for monitoring
     
-    # Pre-load default models
+    **New MLOps endpoint for prediction history**
+    """
     try:
-        model_manager.load_model('vader', 'random_forest')
-        logger.info("Preloaded VADER Random Forest model")
+        predictions = prediction_logger.get_recent_predictions(
+            feature_set=feature_set,
+            model_type=model_type,
+            limit=limit,
+            only_with_outcomes=only_with_outcomes
+        )
+        
+        return {
+            "success": True,
+            "count": len(predictions),
+            "predictions": predictions,
+            "filters": {
+                "feature_set": feature_set,
+                "model_type": model_type,
+                "only_with_outcomes": only_with_outcomes
+            }
+        }
+        
     except Exception as e:
-        logger.warning(f"Could not preload VADER model: {e}")
-    
-    try:
-        model_manager.load_model('finbert', 'random_forest')
-        logger.info("Preloaded FinBERT Random Forest model")
-    except Exception as e:
-        logger.warning(f"Could not preload FinBERT model: {e}")
-    
-    logger.info("API startup complete")
+        logger.error(f"Failed to get recent predictions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-# Shutdown event
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Cleanup on shutdown"""
-    logger.info("Shutting down Bitcoin Prediction API...")
+@app.get("/predictions/accuracy")
+async def get_model_accuracy(
+    feature_set: str = Query(..., description="Feature set: 'vader' or 'finbert'"),
+    model_type: str = Query(..., description="Model type"),
+    days: int = Query(7, description="Number of days to analyze")
+):
+    """
+    Get model accuracy over specified time period
+    
+    **New MLOps endpoint for accuracy tracking**
+    """
+    try:
+        accuracy_stats = prediction_logger.get_model_accuracy(
+            feature_set=feature_set,
+            model_type=model_type,
+            days=days
+        )
+        
+        return {
+            "success": True,
+            "accuracy_stats": accuracy_stats
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get model accuracy: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/predictions/statistics")
+async def get_prediction_statistics():
+    """
+    Get overall prediction statistics
+    
+    **New MLOps endpoint for system-wide statistics**
+    """
+    try:
+        stats = prediction_logger.get_prediction_statistics()
+        
+        return {
+            "success": True,
+            "statistics": stats
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get statistics: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    
+
+@app.get("/drift/features")
+async def detect_feature_drift(
+    feature_set: str = Query(..., description="Feature set: 'vader' or 'finbert'"),
+    reference_days: int = Query(7, description="Days for reference period"),
+    current_days: int = Query(1, description="Days for current period")
+):
+    """
+    Detect feature distribution drift
+    
+    **New MLOps endpoint for data drift monitoring**
+    """
+    try:
+        from src.mlops.drift_detector import DriftDetector
+        
+        drift_detector = DriftDetector()
+        
+        drift_results = drift_detector.detect_feature_drift(
+            feature_set=feature_set,
+            reference_days=reference_days,
+            current_days=current_days,
+            target_db="local"
+        )
+        
+        return {
+            "success": True,
+            "drift_analysis": drift_results
+        }
+        
+    except Exception as e:
+        logger.error(f"Feature drift detection failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/drift/model")
+async def detect_model_drift(
+    feature_set: str = Query(..., description="Feature set: 'vader' or 'finbert'"),
+    model_type: str = Query("random_forest", description="Model type"),
+    reference_days: int = Query(7, description="Days for reference period"),
+    current_days: int = Query(1, description="Days for current period")
+):
+    """
+    Detect model performance drift
+    
+    **New MLOps endpoint for model drift monitoring**
+    """
+    try:
+        from src.mlops.drift_detector import DriftDetector
+        
+        drift_detector = DriftDetector()
+        
+        drift_results = drift_detector.detect_model_drift(
+            feature_set=feature_set,
+            model_type=model_type,
+            reference_days=reference_days,
+            current_days=current_days
+        )
+        
+        return {
+            "success": True,
+            "drift_analysis": drift_results
+        }
+        
+    except Exception as e:
+        logger.error(f"Model drift detection failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/drift/summary")
+async def get_drift_summary(
+    feature_set: str = Query(..., description="Feature set: 'vader' or 'finbert'"),
+    model_type: str = Query("random_forest", description="Model type")
+):
+    """
+    Get comprehensive drift summary with recommendations
+    
+    **New MLOps endpoint for complete drift analysis**
+    """
+    try:
+        from src.mlops.drift_detector import DriftDetector
+        
+        drift_detector = DriftDetector()
+        
+        summary = drift_detector.get_drift_summary(
+            feature_set=feature_set,
+            model_type=model_type
+        )
+        
+        return {
+            "success": True,
+            "summary": summary
+        }
+        
+    except Exception as e:
+        logger.error(f"Drift summary generation failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    
+@app.get("/retrain/check")
+async def check_retraining_need(
+    feature_set: str = Query(..., description="Feature set: 'vader' or 'finbert'"),
+    model_type: str = Query("random_forest", description="Model type")
+):
+    """
+    Check if model retraining is needed
+    
+    **MLOps endpoint for retraining decision**
+    """
+    try:
+        from src.mlops.automated_retraining import AutomatedRetraining
+        
+        retrainer = AutomatedRetraining()
+        decision = retrainer.should_retrain(
+            feature_set=feature_set,
+            model_type=model_type
+        )
+        
+        return {
+            "success": True,
+            "decision": decision
+        }
+        
+    except Exception as e:
+        logger.error(f"Retraining check failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/retrain/execute")
+async def execute_retraining(
+    feature_set: str = Query(..., description="Feature set: 'vader' or 'finbert'"),
+    model_type: str = Query("random_forest", description="Model type"),
+    deploy_if_better: bool = Query(True, description="Deploy if new model is better")
+):
+    """
+    Execute model retraining
+    
+    **MLOps endpoint for manual retraining trigger**
+    """
+    try:
+        from src.mlops.automated_retraining import AutomatedRetraining
+        
+        retrainer = AutomatedRetraining()
+        
+        # Check if retraining is advisable first
+        decision = retrainer.should_retrain(feature_set, model_type)
+        
+        if not decision['data_check']['sufficient_data']:
+            return {
+                "success": False,
+                "error": "Insufficient data for retraining",
+                "data_check": decision['data_check']
+            }
+        
+        # Execute retraining
+        result = retrainer.retrain_model(
+            feature_set=feature_set,
+            model_type=model_type,
+            deploy_if_better=deploy_if_better
+        )
+        
+        return {
+            "success": result['success'],
+            "result": result
+        }
+        
+    except Exception as e:
+        logger.error(f"Retraining execution failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/retrain/both")
+async def execute_retraining_both(
+    model_type: str = Query("random_forest", description="Model type"),
+    deploy_if_better: bool = Query(True, description="Deploy if new models are better")
+):
+    """
+    Execute retraining for both VADER and FinBERT models
+    
+    **MLOps endpoint for dual model retraining**
+    """
+    try:
+        from src.mlops.automated_retraining import AutomatedRetraining
+        
+        retrainer = AutomatedRetraining()
+        results = retrainer.retrain_both_feature_sets(
+            model_type=model_type,
+            deploy_if_better=deploy_if_better
+        )
+        
+        return {
+            "success": True,
+            "results": results
+        }
+        
+    except Exception as e:
+        logger.error(f"Dual retraining failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/retrain/status")
+async def get_retraining_status():
+    """
+    Get overall retraining system status
+    
+    **MLOps endpoint for system status**
+    """
+    try:
+        from src.mlops.automated_retraining import AutomatedRetraining
+        
+        retrainer = AutomatedRetraining()
+        
+        # Check status for both feature sets
+        vader_decision = retrainer.should_retrain('vader', 'random_forest')
+        finbert_decision = retrainer.should_retrain('finbert', 'random_forest')
+        
+        return {
+            "success": True,
+            "status": {
+                "vader": {
+                    "should_retrain": vader_decision['should_retrain'],
+                    "reasons": vader_decision['reasons'],
+                    "data_available": vader_decision['data_check']['sample_count'],
+                    "data_required": vader_decision['data_check']['min_required']
+                },
+                "finbert": {
+                    "should_retrain": finbert_decision['should_retrain'],
+                    "reasons": finbert_decision['reasons'],
+                    "data_available": finbert_decision['data_check']['sample_count'],
+                    "data_required": finbert_decision['data_check']['min_required']
+                },
+                "thresholds": {
+                    "accuracy_degradation": retrainer.accuracy_degradation_threshold,
+                    "drift_severity": retrainer.drift_severity_threshold,
+                    "min_samples": retrainer.min_samples_required,
+                    "min_predictions": retrainer.min_prediction_count
+                }
+            },
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Status check failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

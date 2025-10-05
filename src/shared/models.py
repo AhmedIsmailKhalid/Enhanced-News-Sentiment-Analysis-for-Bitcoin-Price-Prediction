@@ -1,7 +1,18 @@
 """
 SQLAlchemy database models
 """
-from sqlalchemy import JSON, Column, DateTime, Float, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+)
 from sqlalchemy.sql import func
 
 from .database import Base
@@ -152,3 +163,52 @@ class FeatureData(Base):
     
     def __repr__(self):
         return f"<FeatureData(set={self.feature_set_name}, timestamp={self.timestamp})>"
+    
+class PredictionLog(Base):
+    __tablename__ = "prediction_logs"
+    
+    # Primary key
+    id = Column(Integer, primary_key=True, index=True)
+    
+    # Prediction metadata
+    feature_set = Column(String(50), nullable=False)  # 'vader' or 'finbert'
+    model_type = Column(String(50), nullable=False)   # 'random_forest', 'logistic_regression', etc.
+    model_version = Column(String(100), nullable=False)  # Timestamp from model filename
+    
+    # Prediction details
+    prediction = Column(Integer, nullable=False)  # 0 (down) or 1 (up)
+    probability_down = Column(Float, nullable=False)
+    probability_up = Column(Float, nullable=False)
+    confidence = Column(Float, nullable=False)
+    
+    # Features used (snapshot for reproducibility)
+    features_json = Column(JSON, nullable=False)  # All features used for this prediction
+    feature_count = Column(Integer, nullable=False)
+    
+    # Actual outcome (for performance tracking)
+    actual_direction = Column(Integer, nullable=True)  # Filled in later when we know the outcome
+    prediction_correct = Column(Boolean, nullable=True)  # True/False when outcome known
+    
+    # Bitcoin price context
+    bitcoin_price_at_prediction = Column(Float, nullable=True)
+    bitcoin_price_1h_later = Column(Float, nullable=True)
+    price_change_pct = Column(Float, nullable=True)
+    
+    # Performance metrics
+    response_time_ms = Column(Float, nullable=False)
+    cached_features = Column(Boolean, nullable=False)
+    
+    # Timestamps
+    predicted_at = Column(DateTime(timezone=True), server_default=func.now())
+    outcome_recorded_at = Column(DateTime(timezone=True), nullable=True)
+    
+    # Indexes for common queries
+    __table_args__ = (
+        Index('idx_prediction_feature_set', 'feature_set'),
+        Index('idx_prediction_model_type', 'model_type'),
+        Index('idx_prediction_timestamp', 'predicted_at'),
+        Index('idx_prediction_correctness', 'prediction_correct'),
+    )
+    
+    def __repr__(self):
+        return f"<PredictionLog(feature_set={self.feature_set}, model={self.model_type}, prediction={self.prediction}, correct={self.prediction_correct})>"
