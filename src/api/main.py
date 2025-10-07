@@ -8,10 +8,12 @@ from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import Integer
 
 from src.mlops.prediction_logger import PredictionLogger
 from src.serving.model_manager import ModelManager
 from src.serving.prediction_pipeline import PredictionPipeline
+from src.shared.database import SessionLocal
 from src.shared.logging import get_logger
 
 # Initialize logger
@@ -94,7 +96,55 @@ async def health_check():
         "timestamp": datetime.utcnow().isoformat(),
         "loaded_models": len(model_manager.loaded_models)
     }
-
+    
+@app.get("/price/recent")
+async def get_recent_prices(
+    symbol: str = Query("BTC", description="Cryptocurrency symbol"),
+    hours: int = Query(24, description="Hours of price data to return"),
+    limit: int = Query(100, description="Maximum number of data points")
+):
+    """
+    Get recent price data for charting
+    
+    Returns recent price history for real-time charting
+    """
+    try:
+        from datetime import datetime, timedelta
+        from src.shared.models import PriceData
+        
+        cutoff_time = datetime.utcnow() - timedelta(hours=hours)
+        
+        with SessionLocal() as db:
+            prices = db.query(PriceData).filter(
+                PriceData.symbol == symbol,
+                PriceData.collected_at >= cutoff_time
+            ).order_by(
+                PriceData.collected_at.asc()
+            ).limit(limit).all()
+            
+            price_data = [
+                {
+                    'timestamp': price.collected_at.isoformat(),
+                    'price': float(price.price_usd),
+                    'volume_24h': float(price.volume_24h) if price.volume_24h else None,
+                    'change_24h': float(price.change_24h) if price.change_24h else None,
+                }
+                for price in prices
+            ]
+            
+            return {
+                'success': True,
+                'symbol': symbol,
+                'hours': hours,
+                'count': len(price_data),
+                'latest_price': price_data[-1]['price'] if price_data else None,
+                'latest_timestamp': price_data[-1]['timestamp'] if price_data else None,
+                'data': price_data
+            }
+            
+    except Exception as e:
+        logger.error(f"Failed to get recent prices: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/models")
 async def list_models():
@@ -325,7 +375,68 @@ async def get_model_accuracy(
     except Exception as e:
         logger.error(f"Failed to get model accuracy: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+    
+@app.get("/predictions/daily-accuracy")
+async def get_daily_accuracy(
+    feature_set: str = Query(..., description="Feature set: 'vader' or 'finbert'"),
+    model_type: str = Query("random_forest", description="Model type"),
+    days: int = Query(7, description="Number of days to analyze")
+):
+    """
+    Get daily accuracy breakdown for chart visualization
+    
+    Returns accuracy by day for the specified period
+    """
+    try:
+        from datetime import datetime, timedelta
 
+        from sqlalchemy import Date, cast, func
+
+        from src.shared.models import PredictionLog
+        
+        cutoff_date = datetime.utcnow() - timedelta(days=days)
+        
+        with SessionLocal() as db:
+            # Query daily accuracy
+            daily_stats = db.query(
+                cast(PredictionLog.predicted_at, Date).label('date'),
+                func.count(PredictionLog.id).label('total'),
+                func.sum(
+                    func.cast(PredictionLog.prediction_correct, Integer)
+                ).label('correct')
+            ).filter(
+                PredictionLog.feature_set == feature_set,
+                PredictionLog.model_type == model_type,
+                PredictionLog.predicted_at >= cutoff_date,
+                PredictionLog.actual_direction.isnot(None)
+            ).group_by(
+                cast(PredictionLog.predicted_at, Date)
+            ).order_by(
+                cast(PredictionLog.predicted_at, Date)
+            ).all()
+            
+            # Format results
+            results = []
+            for stat in daily_stats:
+                accuracy = stat.correct / stat.total if stat.total > 0 else None
+                results.append({
+                    'date': stat.date.strftime('%Y-%m-%d'),
+                    'accuracy': accuracy,
+                    'predictions': stat.total,
+                    'correct': stat.correct
+                })
+            
+            return {
+                'success': True,
+                'feature_set': feature_set,
+                'model_type': model_type,
+                'days': days,
+                'daily_accuracy': results
+            }
+            
+    except Exception as e:
+        logger.error(f"Failed to get daily accuracy: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/predictions/statistics")
 async def get_prediction_statistics():
@@ -417,7 +528,9 @@ async def detect_model_drift(
 @app.get("/drift/summary")
 async def get_drift_summary(
     feature_set: str = Query(..., description="Feature set: 'vader' or 'finbert'"),
-    model_type: str = Query("random_forest", description="Model type")
+    model_type: str = Query("random_forest", description="Model type"),
+    reference_days: int = Query(30, description="Reference period in days"),
+    current_days: int = Query(7, description="Current period in days")
 ):
     """
     Get comprehensive drift summary with recommendations
@@ -431,7 +544,9 @@ async def get_drift_summary(
         
         summary = drift_detector.get_drift_summary(
             feature_set=feature_set,
-            model_type=model_type
+            model_type=model_type,
+            reference_days=reference_days,
+            current_days=current_days
         )
         
         return {

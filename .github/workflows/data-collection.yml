@@ -43,6 +43,18 @@ jobs:
           COINGECKO_API_URL: https://api.coingecko.com/api/v3
           MAX_ARTICLES_PER_SOURCE: 500
         run: poetry run python scripts/data_collection/collect_and_process_neondb.py
+
+      - name: Generate automated predictions
+        env:
+          NEONDB_PRODUCTION_URL: ${{ secrets.NEONDB_PRODUCTION_URL }}
+          ACTIVE_DATABASE: neondb_production
+        run: poetry run python scripts/deployment/generate_predictions.py --mode auto --db neondb_production --hours 2
+
+      - name: Update prediction outcomes
+        env:
+          NEONDB_PRODUCTION_URL: ${{ secrets.NEONDB_PRODUCTION_URL }}
+          ACTIVE_DATABASE: neondb_production
+        run: poetry run python scripts/deployment/update_prediction_outcomes.py --db neondb_production
       
       - name: Report status
         if: failure()

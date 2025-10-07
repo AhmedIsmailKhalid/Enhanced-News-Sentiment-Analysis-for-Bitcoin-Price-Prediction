@@ -3,7 +3,7 @@ Automated Model Retraining System
 Triggers retraining based on performance degradation, drift, or schedule
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any, Dict
 
 from sqlalchemy.orm import Session  # noqa
@@ -391,11 +391,11 @@ class AutomatedRetraining:
         
         try:
             # Count recent features (last 7 days)
-            recent_cutoff = datetime.utcnow() - timedelta(days=7)
+            # recent_cutoff = datetime.utcnow() - timedelta(days=7)
             
+            # Count ALL features (no time restriction for initial data check)
             sample_count = db.query(FeatureData).filter(
-                FeatureData.feature_set_name == feature_set,
-                FeatureData.timestamp >= recent_cutoff
+                FeatureData.feature_set_name == feature_set
             ).count()
             
             sufficient = sample_count >= self.min_samples_required

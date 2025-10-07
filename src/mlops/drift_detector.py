@@ -383,10 +383,12 @@ class DriftDetector:
             return 'none'
     
     def get_drift_summary(
-        self,
-        feature_set: str,
-        model_type: str = 'random_forest'
-    ) -> Dict[str, Any]:
+            self, 
+            feature_set: str, 
+            model_type: str,
+            reference_days: int = 30,
+            current_days: int = 7
+        ):
         """
         Get comprehensive drift summary combining data and model drift
         
