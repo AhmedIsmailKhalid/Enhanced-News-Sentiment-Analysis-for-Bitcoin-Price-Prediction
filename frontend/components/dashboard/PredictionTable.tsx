@@ -99,12 +99,6 @@ export default function PredictionTable() {
                 Confidence
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Actual
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Result
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Response
               </th>
             </tr>
@@ -112,7 +106,7 @@ export default function PredictionTable() {
           <tbody className="bg-white divide-y divide-gray-200">
             {predictions.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
+                <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
                   No predictions yet
                 </td>
               </tr>
@@ -144,29 +138,7 @@ export default function PredictionTable() {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {(pred.confidence * 100).toFixed(1)}%
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    {pred.actual_direction === null ? (
-                      <span className="text-gray-500">Pending</span>
-                    ) : (
-                      <span
-                        className={`font-medium ${
-                          pred.actual_direction === 1 ? 'text-green-600' : 'text-red-600'
-                        }`}
-                      >
-                        {pred.actual_direction === 1 ? '↑ UP' : '↓ DOWN'}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {pred.prediction_correct === null ? (
-                      <span className="text-gray-400">—</span>
-                    ) : pred.prediction_correct ? (
-                      <span className="text-green-600">✓ Correct</span>
-                    ) : (
-                      <span className="text-red-600">✗ Wrong</span>
-                    )}
-                  </td>
+                  </td>                  
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {pred.response_time_ms.toFixed(0)}ms
                   </td>

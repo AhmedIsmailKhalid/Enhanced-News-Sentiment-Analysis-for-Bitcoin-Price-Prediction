@@ -18,7 +18,7 @@ from src.shared.models import PredictionLog, PriceData
 logger = get_logger(__name__)
 
 
-def update_prediction_outcomes(target_db: str = "local"):
+def update_prediction_outcomes(target_db: str = "neondb_production"):
     """
     Update outcomes for predictions made 1+ hour ago
     

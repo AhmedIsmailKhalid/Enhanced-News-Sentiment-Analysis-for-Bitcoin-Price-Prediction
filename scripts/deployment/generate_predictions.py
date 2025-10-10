@@ -3,17 +3,18 @@ Automated Prediction Generation
 Generates predictions for new feature data automatically
 """
 
-import sys
 import os
+import sys
 from datetime import datetime, timedelta
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from sqlalchemy import and_, func
-from src.shared.database import SessionLocal
-from src.shared.models import FeatureData, PredictionLog
+
 from src.serving.prediction_pipeline import PredictionPipeline
+from src.shared.database import SessionLocal
 from src.shared.logging import get_logger
+from src.shared.models import FeatureData, PredictionLog
 
 logger = get_logger(__name__)
 

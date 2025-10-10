@@ -5,6 +5,7 @@ Production-grade ML model serving with prediction logging
 
 from datetime import datetime
 from typing import Optional
+import numpy as np
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -39,6 +40,23 @@ app.add_middleware(
 model_manager = ModelManager()
 prediction_pipeline = PredictionPipeline()
 prediction_logger = PredictionLogger()
+
+def convert_numpy_types(obj):
+    """Convert numpy types to Python native types for JSON serialization"""
+    if isinstance(obj, np.bool_):
+        return bool(obj)
+    elif isinstance(obj, np.integer):
+        return int(obj)
+    elif isinstance(obj, np.floating):
+        return float(obj)
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, dict):
+        return {key: convert_numpy_types(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_numpy_types(item) for item in obj]
+    else:
+        return obj
 
 
 @app.on_event("startup")
@@ -110,6 +128,7 @@ async def get_recent_prices(
     """
     try:
         from datetime import datetime, timedelta
+
         from src.shared.models import PriceData
         
         cutoff_time = datetime.utcnow() - timedelta(hours=hours)
@@ -145,6 +164,146 @@ async def get_recent_prices(
     except Exception as e:
         logger.error(f"Failed to get recent prices: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+    
+@app.get("/sentiment/timeline")
+async def get_sentiment_timeline(
+    hours: int = Query(24, description="Hours of sentiment data to return"),
+    limit: int = Query(100, description="Maximum number of data points")
+):
+    """
+    Get sentiment score timeline for both VADER and FinBERT
+    
+    Returns hourly sentiment scores for charting
+    """
+    try:
+        from datetime import datetime, timedelta
+        from src.shared.models import SentimentData
+        
+        cutoff_time = datetime.utcnow() - timedelta(hours=hours)
+        
+        with SessionLocal() as db:
+            # Get all sentiment data in the time range
+            sentiment_records = db.query(SentimentData).filter(
+                SentimentData.processed_at >= cutoff_time
+            ).order_by(
+                SentimentData.processed_at.asc()
+            ).limit(limit).all()
+            
+            vader_data = []
+            finbert_data = []
+            
+            for record in sentiment_records:
+                timestamp = record.processed_at.isoformat()
+                
+                # VADER score (compound score from -1 to 1)
+                vader_data.append({
+                    'timestamp': timestamp,
+                    'score': float(record.vader_compound)
+                })
+                
+                # FinBERT score (if available)
+                if record.finbert_compound is not None:
+                    finbert_data.append({
+                        'timestamp': timestamp,
+                        'score': float(record.finbert_compound)
+                    })
+            
+            # Get latest scores
+            latest_vader = vader_data[-1]['score'] if vader_data else None
+            latest_finbert = finbert_data[-1]['score'] if finbert_data else None
+            
+            return {
+                'success': True,
+                'hours': hours,
+                'vader': {
+                    'count': len(vader_data),
+                    'latest_score': latest_vader,
+                    'data': vader_data
+                },
+                'finbert': {
+                    'count': len(finbert_data),
+                    'latest_score': latest_finbert,
+                    'data': finbert_data
+                }
+            }
+            
+    except Exception as e:
+        logger.error(f"Failed to get sentiment timeline: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/predictions/accuracy-timeline")
+async def get_prediction_accuracy_timeline(
+    hours: int = Query(24, description="Hours of accuracy data to return")
+):
+    """
+    Get prediction accuracy timeline for both models
+    
+    Returns hourly rolling accuracy for VADER and FinBERT
+    """
+    try:
+        from datetime import datetime, timedelta
+        # from sqlalchemy import func, and_
+        from src.shared.models import PredictionLog
+        
+        cutoff_time = datetime.utcnow() - timedelta(hours=hours)
+        
+        with SessionLocal() as db:
+            # Calculate accuracy in hourly windows
+            # This groups predictions by hour and calculates accuracy per hour
+            
+            vader_accuracy = []
+            finbert_accuracy = []
+            
+            # Get all predictions in the time range with outcomes
+            vader_preds = db.query(PredictionLog).filter(
+                PredictionLog.feature_set == 'vader',
+                PredictionLog.predicted_at >= cutoff_time,
+                PredictionLog.actual_direction.isnot(None)
+            ).order_by(PredictionLog.predicted_at.asc()).all()
+            
+            finbert_preds = db.query(PredictionLog).filter(
+                PredictionLog.feature_set == 'finbert',
+                PredictionLog.predicted_at >= cutoff_time,
+                PredictionLog.actual_direction.isnot(None)
+            ).order_by(PredictionLog.predicted_at.asc()).all()
+            
+            # Calculate rolling accuracy (last 10 predictions window)
+            window_size = 10
+            
+            for i in range(len(vader_preds)):
+                if i >= window_size - 1:
+                    window_preds = vader_preds[i - window_size + 1:i + 1]
+                    correct = sum(1 for p in window_preds if p.prediction_correct)
+                    accuracy = correct / window_size
+                    vader_accuracy.append({
+                        'timestamp': vader_preds[i].predicted_at.isoformat(),
+                        'accuracy': accuracy,
+                        'window_size': window_size
+                    })
+            
+            for i in range(len(finbert_preds)):
+                if i >= window_size - 1:
+                    window_preds = finbert_preds[i - window_size + 1:i + 1]
+                    correct = sum(1 for p in window_preds if p.prediction_correct)
+                    accuracy = correct / window_size
+                    finbert_accuracy.append({
+                        'timestamp': finbert_preds[i].predicted_at.isoformat(),
+                        'accuracy': accuracy,
+                        'window_size': window_size
+                    })
+            
+            return {
+                'success': True,
+                'hours': hours,
+                'vader_accuracy': vader_accuracy,
+                'finbert_accuracy': finbert_accuracy
+            }
+            
+    except Exception as e:
+        logger.error(f"Failed to get prediction accuracy timeline: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/models")
 async def list_models():
@@ -548,6 +707,9 @@ async def get_drift_summary(
             reference_days=reference_days,
             current_days=current_days
         )
+        
+        # Convert numpy types before returning
+        summary = convert_numpy_types(summary)
         
         return {
             "success": True,

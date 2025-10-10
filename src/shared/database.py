@@ -15,24 +15,22 @@ logger = get_logger(__name__)
 # Load environment variables
 load_dotenv('.env.dev')
 
-# Get active database configuration
-ACTIVE_DATABASE = os.getenv('ACTIVE_DATABASE')
+# Get database URLs
 DATABASE_URL = os.getenv('DATABASE_URL')
 NEONDB_PRODUCTION_URL = os.getenv('NEONDB_PRODUCTION_URL')
 NEONDB_BACKUP_URL = os.getenv('NEONDB_BACKUP_URL')
 
-# Select database URL based on ACTIVE_DATABASE setting
-if ACTIVE_DATABASE == 'neondb_production' and NEONDB_PRODUCTION_URL:
+if NEONDB_PRODUCTION_URL:
     ACTIVE_DB_URL = NEONDB_PRODUCTION_URL
-    logger.info("Using NeonDB Production database")
-elif ACTIVE_DATABASE == 'neondb_backup' and NEONDB_BACKUP_URL:
-    ACTIVE_DB_URL = NEONDB_BACKUP_URL
-    logger.info("Using NeonDB Backup database")
-elif not ACTIVE_DATABASE:
-    raise ValueError("ACTIVE_DATABASE environment variable must be set in .env.dev")
-else:
+    logger.info("✓ Using NeonDB Production database")
+elif DATABASE_URL:
     ACTIVE_DB_URL = DATABASE_URL
-    logger.info("Using local PostgreSQL database")
+    logger.info("✓ Using local PostgreSQL database (development mode)")
+else:
+    raise ValueError(
+        "No database URL configured. Set either NEONDB_PRODUCTION_URL (production) "
+        "or DATABASE_URL (local development) in environment variables."
+    )
 
 # Create engine
 engine = create_engine(
