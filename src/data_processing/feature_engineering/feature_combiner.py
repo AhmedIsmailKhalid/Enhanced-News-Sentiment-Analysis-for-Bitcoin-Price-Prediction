@@ -89,8 +89,12 @@ class FeatureCombiner:
                 dataset_name="FinBERT"
             )
             
-            self.logger.info(f"VADER dataset shape: {vader_dataset.shape}")
-            self.logger.info(f"FinBERT dataset shape: {finbert_dataset.shape}")
+            self.logger.info(f"VADER dataset: {vader_dataset.shape[0]} rows, {vader_dataset.shape[1]} columns (expected: 13 features)")
+            self.logger.info(f"FinBERT dataset: {finbert_dataset.shape[0]} rows, {finbert_dataset.shape[1]} columns (expected: 13 features)")
+
+            # Log feature names for verification
+            self.logger.info(f"VADER features: {list(vader_dataset.columns)}")
+            self.logger.info(f"FinBERT features: {list(finbert_dataset.columns)}")
             
             return vader_dataset, finbert_dataset
             
@@ -170,47 +174,70 @@ class FeatureCombiner:
     ) -> pd.DataFrame:
         """
         Merge price, sentiment, and temporal features
-        
-        Args:
-            price_features: Price-based features
-            sentiment_features: Sentiment-based features (VADER or FinBERT)
-            temporal_features: Temporal features
-            dataset_name: Name for logging (VADER or FinBERT)
         """
         # Start with price features as base
         merged = price_features.copy()
         
-        # Add sentiment features (matching on timestamp)
+        # Add sentiment features using merge_asof for nearest timestamp matching
         if 'collected_at' in merged.columns and 'processed_at' in sentiment_features.columns:
-            # Align timestamps (sentiment processed_at to price collected_at)
-            sentiment_features['collected_at'] = sentiment_features['processed_at']
+            # Sort both by timestamp
+            merged = merged.sort_values('collected_at')
+            sentiment_sorted = sentiment_features.sort_values('processed_at').copy()
             
-            # Merge on collected_at
-            merged = pd.merge(
+            # Rename for merge
+            sentiment_sorted = sentiment_sorted.rename(columns={'processed_at': 'collected_at'})
+            
+            # Get only sentiment columns (drop other columns that might conflict)
+            sentiment_cols = [col for col in sentiment_sorted.columns 
+                            if col.startswith(('vader_', 'finbert_')) or col == 'collected_at']
+            sentiment_sorted = sentiment_sorted[sentiment_cols]
+            
+            # Use merge_asof to find nearest sentiment for each price record
+            merged = pd.merge_asof(
                 merged,
-                sentiment_features,
+                sentiment_sorted,
                 on='collected_at',
-                how='left',
-                suffixes=('', '_sentiment')
+                direction='backward',
+                tolerance=pd.Timedelta('1 hour')
             )
+
+            # Fill missing sentiment with forward fill (use next available sentiment)
+            sentiment_cols = [col for col in merged.columns if 'vader_' in col or 'finbert_' in col]
+            merged[sentiment_cols] = merged[sentiment_cols].fillna(method='ffill')
+
+            # If still null (at the beginning), use backward fill
+            merged[sentiment_cols] = merged[sentiment_cols].fillna(method='bfill')
+
+            # Count remaining nulls
+            sentiment_null_count = merged[sentiment_cols].isnull().sum().sum()
+            if sentiment_null_count > 0:
+                self.logger.warning(f"{dataset_name}: {sentiment_null_count} null sentiment values after merge and fill")
+            else:
+                self.logger.info(f"{dataset_name}: All sentiment values filled successfully")
         
         # Add temporal features (already have collected_at)
-        # Extract only temporal columns (not duplicates)
         temporal_cols = [col for col in temporal_features.columns 
-                        if col.startswith(('hour', 'day', 'month', 'week', 'quarter', 
-                                          'is_', 'year'))]
+                        if col.startswith(('hour', 'day', 'is_'))]
         
         if temporal_cols and 'collected_at' in temporal_features.columns:
+            temporal_sorted = temporal_features[['collected_at'] + temporal_cols].copy()
+            
+            # Merge temporal features (should match exactly)
             merged = pd.merge(
                 merged,
-                temporal_features[['collected_at'] + temporal_cols],
+                temporal_sorted,
                 on='collected_at',
                 how='left',
                 suffixes=('', '_temporal')
             )
         
-        # Remove duplicates and clean up
+        # Remove any duplicate columns
         merged = merged.loc[:, ~merged.columns.duplicated()]
+        
+        # Log merge results
+        sentiment_null_count = merged[[col for col in merged.columns if 'vader_' in col or 'finbert_' in col]].isnull().sum().sum()
+        if sentiment_null_count > 0:
+            self.logger.warning(f"{dataset_name}: {sentiment_null_count} null sentiment values after merge")
         
         self.logger.info(f"{dataset_name} dataset: {merged.shape[0]} rows, {merged.shape[1]} features")
         

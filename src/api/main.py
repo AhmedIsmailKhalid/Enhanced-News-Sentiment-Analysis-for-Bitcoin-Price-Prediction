@@ -5,8 +5,8 @@ Production-grade ML model serving with prediction logging
 
 from datetime import datetime
 from typing import Optional
-import numpy as np
 
+import numpy as np
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import Integer
@@ -177,6 +177,7 @@ async def get_sentiment_timeline(
     """
     try:
         from datetime import datetime, timedelta
+
         from src.shared.models import SentimentData
         
         cutoff_time = datetime.utcnow() - timedelta(hours=hours)
@@ -243,6 +244,7 @@ async def get_prediction_accuracy_timeline(
     """
     try:
         from datetime import datetime, timedelta
+
         # from sqlalchemy import func, and_
         from src.shared.models import PredictionLog
         

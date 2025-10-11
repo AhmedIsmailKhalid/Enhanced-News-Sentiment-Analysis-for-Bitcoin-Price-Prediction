@@ -44,7 +44,6 @@ class SentimentProcessor:
         """
         # Get appropriate session
         if target_db == "local":
-            
             db = SessionLocal()
         elif target_db == "neondb_production":
             import os
@@ -77,9 +76,10 @@ class SentimentProcessor:
             # Find articles without sentiment
             articles = db.query(NewsData).filter(
                 ~NewsData.id.in_(
-                    db.query(SentimentData.news_data_id)
+                    db.query(SentimentData.news_data_id)  # <-- CORRECT
                 )
             ).all()
+
             
             if not articles:
                 self.logger.info("No unprocessed articles found")
@@ -111,7 +111,7 @@ class SentimentProcessor:
             
         finally:
             db.close()
-    
+                    
     def analyze_article(self, article: NewsData) -> SentimentData:
         """
         Analyze sentiment for a single article using both VADER and FinBERT
