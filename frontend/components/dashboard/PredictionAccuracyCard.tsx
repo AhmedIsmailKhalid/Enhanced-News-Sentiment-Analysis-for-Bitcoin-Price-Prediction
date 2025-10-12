@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { apiClient } from '@/lib/api';
 
-export default function PredictionAccuracyCard() {
+export default function PredictionConfidenceCard() {
   const [accuracyData, setAccuracyData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -18,27 +18,47 @@ export default function PredictionAccuracyCard() {
 
   const loadAccuracyData = async () => {
     try {
-      const response = await apiClient.getPredictionAccuracyTimeline(24);
+      // Get predictions with outcomes only
+      const response = await apiClient.getRecentPredictions(undefined, 100);
       
-      if (response.success) {
-        // Combine data for chart
-        const combinedData = combineAccuracyData(
-          response.vader_accuracy,
-          response.finbert_accuracy
+      if (response.predictions && response.predictions.length > 0) {
+        // Filter predictions with outcomes
+        const predictionsWithOutcomes = response.predictions.filter(
+          (p: any) => p.actual_direction !== null
         );
         
-        // Calculate latest accuracy
-        const vaderLatest = response.vader_accuracy.length > 0 
-          ? response.vader_accuracy[response.vader_accuracy.length - 1].accuracy 
-          : null;
-        const finbertLatest = response.finbert_accuracy.length > 0 
-          ? response.finbert_accuracy[response.finbert_accuracy.length - 1].accuracy 
-          : null;
+        if (predictionsWithOutcomes.length === 0) {
+          setAccuracyData({ chartData: [], vaderAvg: null, finbertAvg: null });
+          setLoading(false);
+          return;
+        }
+        
+        // Separate VADER and FinBERT predictions
+        const vaderPreds = predictionsWithOutcomes
+          .filter((p: any) => p.feature_set === 'vader')
+          .reverse(); // Oldest first
+        
+        const finbertPreds = predictionsWithOutcomes
+          .filter((p: any) => p.feature_set === 'finbert')
+          .reverse();
+        
+        // Calculate rolling accuracy (window of 10 predictions)
+        const vaderRollingAccuracy = calculateRollingAccuracy(vaderPreds, 10);
+        const finbertRollingAccuracy = calculateRollingAccuracy(finbertPreds, 10);
+        
+        // Combine for chart
+        const combinedData = combineAccuracyData(vaderRollingAccuracy, finbertRollingAccuracy);
+        
+        // Calculate overall accuracy
+        const vaderAvg = vaderPreds.filter((p: any) => p.prediction_correct).length / vaderPreds.length;
+        const finbertAvg = finbertPreds.filter((p: any) => p.prediction_correct).length / finbertPreds.length;
         
         setAccuracyData({
           chartData: combinedData,
-          vaderLatest,
-          finbertLatest,
+          vaderAvg,
+          finbertAvg,
+          vaderCount: vaderPreds.length,
+          finbertCount: finbertPreds.length
         });
       }
     } catch (error) {
@@ -48,27 +68,43 @@ export default function PredictionAccuracyCard() {
     }
   };
 
+  const calculateRollingAccuracy = (predictions: any[], windowSize: number) => {
+    if (predictions.length < windowSize) return [];
+    
+    const rolling = [];
+    for (let i = windowSize - 1; i < predictions.length; i++) {
+      const window = predictions.slice(i - windowSize + 1, i + 1);
+      const correct = window.filter((p: any) => p.prediction_correct).length;
+      const accuracy = correct / windowSize;
+      
+      rolling.push({
+        index: i + 1,
+        accuracy: accuracy * 100 // Convert to percentage
+      });
+    }
+    
+    return rolling;
+  };
+
   const combineAccuracyData = (vaderData: any[], finbertData: any[]) => {
-    const dataMap = new Map();
+    const combined = [];
+    const maxLength = Math.max(vaderData.length, finbertData.length);
     
-    vaderData.forEach(item => {
-      const time = new Date(item.timestamp).toLocaleTimeString('en-US', { 
-        hour: '2-digit', 
-        minute: '2-digit' 
-      });
-      dataMap.set(item.timestamp, { time, vader: item.accuracy * 100 });
-    });
+    for (let i = 0; i < maxLength; i++) {
+      const entry: any = { index: i + 1 };
+      
+      if (vaderData[i]) {
+        entry.vader = vaderData[i].accuracy;
+      }
+      
+      if (finbertData[i]) {
+        entry.finbert = finbertData[i].accuracy;
+      }
+      
+      combined.push(entry);
+    }
     
-    finbertData.forEach(item => {
-      const time = new Date(item.timestamp).toLocaleTimeString('en-US', { 
-        hour: '2-digit', 
-        minute: '2-digit' 
-      });
-      const existing = dataMap.get(item.timestamp) || { time };
-      dataMap.set(item.timestamp, { ...existing, finbert: item.accuracy * 100 });
-    });
-    
-    return Array.from(dataMap.values());
+    return combined;
   };
 
   if (loading) {
@@ -85,9 +121,9 @@ export default function PredictionAccuracyCard() {
   if (!accuracyData || accuracyData.chartData.length === 0) {
     return (
       <div className="bg-white rounded-lg shadow p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Prediction Accuracy</h3>
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Model Accuracy (Rolling 10)</h3>
         <div className="flex items-center justify-center h-64 text-gray-500">
-          <p>Not enough prediction data yet (need 10+ predictions with outcomes)</p>
+          <p>Need 10+ predictions with outcomes to show accuracy</p>
         </div>
       </div>
     );
@@ -95,27 +131,31 @@ export default function PredictionAccuracyCard() {
 
   return (
     <div className="bg-white rounded-lg shadow p-6">
-      <h3 className="text-lg font-semibold text-gray-900 mb-4">Prediction Accuracy (24h)</h3>
+      <h3 className="text-lg font-semibold text-gray-900 mb-4">Model Accuracy (Rolling Window)</h3>
       
-      {/* Current Accuracy */}
+      {/* Overall Accuracy */}
       <div className="grid grid-cols-2 gap-4 mb-4">
         <div>
-          <p className="text-sm text-gray-600">VADER</p>
+          <p className="text-sm text-gray-600">VADER Overall</p>
           <p className="text-2xl font-bold text-cyan-600">
-            {accuracyData.vaderLatest 
-              ? `${(accuracyData.vaderLatest * 100).toFixed(1)}%` 
+            {accuracyData.vaderAvg !== null 
+              ? `${(accuracyData.vaderAvg * 100).toFixed(1)}%`
               : 'N/A'}
           </p>
-          <p className="text-xs text-gray-500">Rolling 10-prediction window</p>
+          <p className="text-xs text-gray-500">
+            {accuracyData.vaderCount} predictions with outcomes
+          </p>
         </div>
         <div>
-          <p className="text-sm text-gray-600">FinBERT</p>
+          <p className="text-sm text-gray-600">FinBERT Overall</p>
           <p className="text-2xl font-bold text-rose-600">
-            {accuracyData.finbertLatest 
-              ? `${(accuracyData.finbertLatest * 100).toFixed(1)}%` 
+            {accuracyData.finbertAvg !== null 
+              ? `${(accuracyData.finbertAvg * 100).toFixed(1)}%`
               : 'N/A'}
           </p>
-          <p className="text-xs text-gray-500">Rolling 10-prediction window</p>
+          <p className="text-xs text-gray-500">
+            {accuracyData.finbertCount} predictions with outcomes
+          </p>
         </div>
       </div>
 
@@ -124,9 +164,10 @@ export default function PredictionAccuracyCard() {
         <LineChart data={accuracyData.chartData}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
           <XAxis 
-            dataKey="time" 
+            dataKey="index" 
             stroke="#6b7280"
             style={{ fontSize: '12px' }}
+            label={{ value: 'Prediction #', position: 'insideBottom', offset: -5 }}
           />
           <YAxis 
             stroke="#6b7280"
@@ -148,19 +189,25 @@ export default function PredictionAccuracyCard() {
             dataKey="vader" 
             stroke="#06b6d4" 
             strokeWidth={2}
-            name="VADER"
-            dot={false}
+            name="VADER Accuracy"
+            dot={{ r: 3 }}
+            connectNulls
           />
           <Line 
             type="monotone" 
             dataKey="finbert" 
             stroke="#f43f5e" 
             strokeWidth={2}
-            name="FinBERT"
-            dot={false}
+            name="FinBERT Accuracy"
+            dot={{ r: 3 }}
+            connectNulls
           />
         </LineChart>
       </ResponsiveContainer>
+      
+      <p className="text-xs text-gray-500 mt-2 text-center">
+        Rolling accuracy calculated over 10-prediction windows
+      </p>
     </div>
   );
 }

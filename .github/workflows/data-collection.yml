@@ -48,7 +48,7 @@ jobs:
         env:
           NEONDB_PRODUCTION_URL: ${{ secrets.NEONDB_PRODUCTION_URL }}
           ACTIVE_DATABASE: neondb_production
-        run: poetry run python scripts/deployment/generate_predictions.py --mode auto --db neondb_production --hours 2
+        run: poetry run python scripts/deployment/generate_predictions.py --mode auto --db neondb_production --hours 1000
       
       - name: Report status
         if: failure()

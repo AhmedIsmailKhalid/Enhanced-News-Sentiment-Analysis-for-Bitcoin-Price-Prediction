@@ -3,14 +3,14 @@ Reprocess sentiment for all articles in NeonDB
 Run after deleting sentiment_data to regenerate with proper alignment
 """
 
-import sys
 import os
+import sys
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from src.data_processing.text_processing.sentiment_processor import SentimentProcessor
 from src.data_processing.feature_engineering.feature_combiner import FeatureCombiner
 from src.data_processing.feature_engineering.feature_storage import FeatureStorageManager
+from src.data_processing.text_processing.sentiment_processor import SentimentProcessor
 from src.shared.logging import get_logger, setup_logging
 
 setup_logging()

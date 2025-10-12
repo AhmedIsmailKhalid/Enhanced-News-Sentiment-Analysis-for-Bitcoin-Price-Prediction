@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import RealtimePriceChart from '@/components/dashboard/RealtimePriceChart';
 import SentimentScoreCard from '@/components/dashboard/SentimentScoreCard';
-// import PredictionAccuracyCard from '@/components/dashboard/PredictionAccuracyCard';
+import PredictionAccuracyCard from '@/components/dashboard/PredictionAccuracyCard';
 import PredictionConfidenceCard from '@/components/dashboard/PredictionConfidenceCard';
 import PredictionTable from '@/components/dashboard/PredictionTable';
 
@@ -18,11 +18,18 @@ export default function OverviewPage() {
       </div>
 
       {/* Top Row: Three Main Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+      {/* <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8"> */}
+       <div className="grid grid-cols-2 gap-6">
         <RealtimePriceChart />
         <SentimentScoreCard />
         {/* <PredictionAccuracyCard /> */}
-        <PredictionConfidenceCard />
+        {/* <PredictionConfidenceCard /> */}
+      </div>
+
+      // In the grid:
+      <div className="grid grid-cols-2 gap-6">
+        <PredictionConfidenceCard />  {/* Model confidence over time */}
+        <PredictionAccuracyCard />    {/* Model accuracy over time */}
       </div>
 
       {/* Bottom Row: Recent Predictions Table */}

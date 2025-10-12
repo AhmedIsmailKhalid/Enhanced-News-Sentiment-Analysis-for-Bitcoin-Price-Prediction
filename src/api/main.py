@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Optional
 
 import numpy as np
+import pandas as pd
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import Integer
@@ -318,18 +319,49 @@ async def list_models():
 @app.post("/predict")
 async def predict(
     feature_set: str = Query(..., description="Feature set: 'vader' or 'finbert'"),
-    model_type: str = Query(..., description="Model type: 'logistic_regression', 'random_forest', 'gradient_boosting'"),
-    use_cached_features: bool = Query(True, description="Use cached features (faster) or compute on-demand")
+    model_type: str = Query(..., description="Model type"),
+    use_cached_features: bool = Query(True, description="Use cached features")
 ):
-    """
-    Make a prediction with specified model
-    
-    **Now with automatic prediction logging for MLOps monitoring**
-    """
+    """Make a prediction with specified model"""
     import time
     start_time = time.time()
     
     try:
+        # Validate feature_set
+        if feature_set not in ['vader', 'finbert']:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Invalid feature_set: {feature_set}. Must be 'vader' or 'finbert'"
+            )
+        
+        # Get features first (for logging)
+        from src.serving.feature_server import FeatureServer
+        feature_server = FeatureServer()
+        
+        if use_cached_features:
+            features = feature_server.get_latest_features(feature_set, 'neondb_production')
+        else:
+            features = feature_server.compute_features_on_demand(feature_set, 'neondb_production')
+        
+        # Convert Series to dict for JSON storage
+        if features is not None:
+            features_dict = features.to_dict()
+            
+            # Convert non-JSON-serializable types
+            for key, value in features_dict.items():
+                if pd.isna(value):
+                    features_dict[key] = None
+                elif isinstance(value, pd.Timestamp):
+                    features_dict[key] = value.isoformat()  # Convert to ISO string
+                elif isinstance(value, (pd.Int64Dtype, pd.Float64Dtype)):
+                    features_dict[key] = float(value)
+        else:
+            features_dict = {}
+            
+        bitcoin_price = features_dict.get('price_usd') if features_dict else None
+        
+        
+        
         # Make prediction
         result = prediction_pipeline.predict(
             feature_set=feature_set,
@@ -337,17 +369,31 @@ async def predict(
             use_cached_features=use_cached_features
         )
         
+        if not result.get('success'):
+            raise HTTPException(
+                status_code=500,
+                detail=result.get('error', 'Prediction failed')
+            )
+        
         # Calculate response time
         response_time_ms = (time.time() - start_time) * 1000
         result['performance']['response_time_ms'] = response_time_ms
         
-        # Get current Bitcoin price from features (if available)
-        bitcoin_price = None
-        if 'features_used' in result.get('model_info', {}) and result['model_info']['features_used']:
-            features_dict = result['model_info'].get('features_dict', {})
-            bitcoin_price = features_dict.get('price_usd')
+        # Get model accuracy
+        accuracy_stats = prediction_logger.get_model_accuracy(
+            feature_set=feature_set,
+            model_type=model_type,
+            days=7
+        )
+        model_accuracy = accuracy_stats.get('accuracy') if accuracy_stats else None
         
-        # Log prediction to database
+        # Add accuracy to result
+        result['prediction']['accuracy'] = model_accuracy
+        result['prediction']['accuracy_period'] = '7 days'
+        if 'confidence' in result['prediction']:
+            del result['prediction']['confidence']
+        
+        # Log prediction with actual features
         try:
             prediction_id = prediction_logger.log_prediction(
                 feature_set=feature_set,
@@ -356,24 +402,25 @@ async def predict(
                 prediction=result['prediction']['direction_numeric'],
                 probability_down=result['prediction']['probability']['down'],
                 probability_up=result['prediction']['probability']['up'],
-                confidence=result['prediction']['confidence'],
-                features=result['model_info'].get('features_dict', {}),
+                confidence=max(result['prediction']['probability']['down'], 
+                              result['prediction']['probability']['up']),
+                features=features_dict, 
                 response_time_ms=response_time_ms,
                 cached_features=use_cached_features,
                 bitcoin_price=bitcoin_price
             )
             
-            # Add prediction ID to response
             result['prediction_id'] = prediction_id
             logger.info(f"Prediction logged with ID: {prediction_id}")
             
         except Exception as log_error:
             logger.error(f"Failed to log prediction: {log_error}")
             result['prediction_id'] = None
-            result['logging_error'] = str(log_error)
         
         return result
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Prediction failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -396,6 +443,26 @@ async def predict_both(
         result = prediction_pipeline.predict_both_models(
             use_cached_features=use_cached_features
         )
+        
+        # Get accuracies for both models
+        vader_accuracy_stats = prediction_logger.get_model_accuracy('vader', 'random_forest', days=7)
+        finbert_accuracy_stats = prediction_logger.get_model_accuracy('finbert', 'random_forest', days=7)
+        
+        vader_accuracy = vader_accuracy_stats.get('accuracy') if vader_accuracy_stats else None
+        finbert_accuracy = finbert_accuracy_stats.get('accuracy') if finbert_accuracy_stats else None
+        
+        # Add accuracy to results and remove confidence
+        if result['vader']['success']:
+            result['vader']['prediction']['accuracy'] = vader_accuracy
+            result['vader']['prediction']['accuracy_period'] = '7 days'
+            if 'confidence' in result['vader']['prediction']:
+                del result['vader']['prediction']['confidence']
+        
+        if result['finbert']['success']:
+            result['finbert']['prediction']['accuracy'] = finbert_accuracy
+            result['finbert']['prediction']['accuracy_period'] = '7 days'
+            if 'confidence' in result['finbert']['prediction']:
+                del result['finbert']['prediction']['confidence']
         
         # Calculate total response time
         total_response_time_ms = (time.time() - start_time) * 1000

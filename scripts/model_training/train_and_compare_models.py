@@ -148,9 +148,9 @@ def main():
             print("\n Model Performance Comparison:")
             print(comparison_df.to_string(index=False))
             
-            # Statistical significance test (using best models)
+            # Statistical significance test
             print("\n Statistical Significance Test:")
-            
+
             # Get predictions from best models
             vader_best = max(
                 all_results['vader']['model_results'].values(),
@@ -160,24 +160,26 @@ def main():
                 all_results['finbert']['model_results'].values(),
                 key=lambda x: x['val_metrics']['accuracy']
             )
-            
+
+            # Use numpy arrays to avoid feature name validation
+            # This bypasses sklearn's feature name checking
             vader_pred = vader_best['model'].predict(
-                all_results['vader']['scaled_data']['X_test']
+                all_results['vader']['scaled_data']['X_test'].values  # Convert to numpy array
             )
             finbert_pred = finbert_best['model'].predict(
-                all_results['finbert']['scaled_data']['X_test']
+                all_results['finbert']['scaled_data']['X_test'].values  # Convert to numpy array
             )
-            
+
             sig_test = comparator.statistical_significance_test(
                 vader_pred,
                 finbert_pred,
                 all_results['vader']['scaled_data']['y_test'].values
             )
-            
+
             print(f"  McNemar's Chi-squared: {sig_test['mcnemar_chi2']:.4f}")
             print(f"  P-value: {sig_test['p_value']:.4f}")
             print(f"  Significant difference: {'Yes' if sig_test['significant'] else 'No'}")
-            
+
             # Overall winner
             print(f"\n Overall Winner: {comparator._determine_overall_winner(comparison_df)}")
     

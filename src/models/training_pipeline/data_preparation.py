@@ -5,6 +5,7 @@ Loads features, creates targets, splits data
 from typing import Dict, Tuple
 
 import pandas as pd
+from sklearn.impute import SimpleImputer
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sqlalchemy import text
@@ -174,24 +175,33 @@ class DataPreparation:
         Returns:
             Tuple of (X_train_scaled, X_val_scaled, X_test_scaled)
         """
+        
+        # Impute NaN values with median
+        imputer = SimpleImputer(strategy='median')
+        
+        X_train_imputed = imputer.fit_transform(X_train)
+        X_val_imputed = imputer.transform(X_val)
+        X_test_imputed = imputer.transform(X_test)
+        
+        
         # Fit scaler on training data only
         self.scaler.fit(X_train)
         
         # Transform all sets
         X_train_scaled = pd.DataFrame(
-            self.scaler.transform(X_train),
+            self.scaler.transform(X_train_imputed),
             columns=X_train.columns,
             index=X_train.index
         )
         
         X_val_scaled = pd.DataFrame(
-            self.scaler.transform(X_val),
+            self.scaler.transform(X_val_imputed),
             columns=X_val.columns,
             index=X_val.index
         )
         
         X_test_scaled = pd.DataFrame(
-            self.scaler.transform(X_test),
+            self.scaler.transform(X_test_imputed),
             columns=X_test.columns,
             index=X_test.index
         )
