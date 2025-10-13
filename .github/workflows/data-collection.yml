@@ -44,11 +44,22 @@ jobs:
           MAX_ARTICLES_PER_SOURCE: 500
         run: poetry run python scripts/data_collection/collect_and_process_neondb.py
 
-      - name: Generate automated predictions
+      - name: Generate Predictions
         env:
           NEONDB_PRODUCTION_URL: ${{ secrets.NEONDB_PRODUCTION_URL }}
-          ACTIVE_DATABASE: neondb_production
-        run: poetry run python scripts/deployment/generate_predictions.py --mode auto --db neondb_production --hours 1000
+        run: |
+          poetry run python scripts/deployment/generate_predictions.py \
+            --mode recent \
+            --hours 1 \
+            --batch-size 10 \
+            --db neondb_production
+      
+      - name: Update Prediction Outcomes
+        env:
+          NEONDB_PRODUCTION_URL: ${{ secrets.NEONDB_PRODUCTION_URL }}
+        run: |
+          poetry run python scripts/deployment/update_prediction_outcomes.py \
+            --db neondb_production
       
       - name: Report status
         if: failure()

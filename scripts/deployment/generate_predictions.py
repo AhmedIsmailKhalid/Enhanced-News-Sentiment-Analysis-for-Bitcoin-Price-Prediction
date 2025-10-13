@@ -33,7 +33,7 @@ import sys
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 
 import pandas as pd
 
@@ -43,10 +43,10 @@ sys.path.insert(0, str(project_root))
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from src.shared.database import SessionLocal
-from src.shared.models import FeatureData, PredictionLog
 from src.serving.model_manager import ModelManager
+from src.shared.database import SessionLocal
 from src.shared.logging import get_logger
+from src.shared.models import FeatureData, PredictionLog
 
 
 class UnifiedPredictionGenerator:

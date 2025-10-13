@@ -77,8 +77,23 @@ def update_prediction_outcomes(target_db: str = "neondb_production"):
                 ).order_by(PriceData.collected_at).first()
                 
                 if not future_price:
-                    logger.debug(f"Future price not yet available for prediction {pred.id}")
-                    continue
+                    # Check if prediction is old enough that we should have data by now
+                    hours_since_prediction = (datetime.utcnow() - pred.predicted_at).total_seconds() / 3600
+                    
+                    if hours_since_prediction > 6:
+                        # Prediction is 6+ hours old, we should have data by now
+                        # Mark as unevaluatable (missing data)
+                        logger.warning(
+                            f"No future price data for old prediction {pred.id} "
+                            f"at {pred.predicted_at} (prediction is {hours_since_prediction:.1f} hours old)"
+                        )
+                        # Skip permanently - can't evaluate without data
+                        # Optionally: could mark with a flag like pred.unevaluatable = True
+                        continue
+                    else:
+                        # Prediction is recent, data not yet available
+                        logger.debug(f"Future price not yet available for prediction {pred.id}")
+                        continue
                 
                 # Calculate actual direction
                 price_change = future_price.price_usd - pred_price.price_usd

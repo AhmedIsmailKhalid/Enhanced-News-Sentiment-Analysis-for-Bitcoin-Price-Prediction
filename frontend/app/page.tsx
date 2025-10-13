@@ -26,7 +26,9 @@ export default function OverviewPage() {
         {/* <PredictionConfidenceCard /> */}
       </div>
 
-      // In the grid:
+      <br/>
+
+      {/* // In the grid: */}
       <div className="grid grid-cols-2 gap-6">
         <PredictionConfidenceCard />  {/* Model confidence over time */}
         <PredictionAccuracyCard />    {/* Model accuracy over time */}

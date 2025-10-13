@@ -55,6 +55,8 @@ tenacity = "^8.2.3"
 click = "^8.1.7"
 python-multipart = "^0.0.20"
 orjson = "^3.11.3"
+lightgbm = "^4.6.0"
+xgboost = "^3.0.5"
 
 [tool.poetry.group.dev.dependencies]
 # Code Quality

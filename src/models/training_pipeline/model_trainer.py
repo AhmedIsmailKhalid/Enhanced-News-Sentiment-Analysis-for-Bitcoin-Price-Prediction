@@ -8,6 +8,7 @@ from typing import Any, Dict, Optional
 import joblib
 import numpy as np
 import pandas as pd
+from lightgbm import LGBMClassifier
 from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (
@@ -19,6 +20,7 @@ from sklearn.metrics import (
     recall_score,
     roc_auc_score,
 )
+from xgboost import XGBClassifier
 
 from src.shared.logging import get_logger
 
@@ -44,12 +46,12 @@ class ModelTrainer:
             'random_forest': {
                 'model': RandomForestClassifier(
                     n_estimators=100,
-                    max_depth=10,
-                    min_samples_split=5,
-                    min_samples_leaf=2,
+                    max_depth=10,        # Add depth limit (was None)
+                    min_samples_split=20, # Require more samples to split (was 2)
+                    min_samples_leaf=10,  # Require more samples in leaf (was 1)
+                    max_features='sqrt',  # Reduce features per tree
                     random_state=42,
-                    class_weight='balanced',
-                    n_jobs=-1
+                    class_weight='balanced'
                 ),
                 'name': 'Random Forest'
             },
@@ -63,6 +65,33 @@ class ModelTrainer:
                     random_state=42
                 ),
                 'name': 'Gradient Boosting'
+            },
+            'lgbm': {
+                'model' : LGBMClassifier(
+                n_estimators=100,
+                max_depth=4,
+                learning_rate=0.05,
+                num_leaves=15,         # Limit tree complexity
+                min_child_samples=20,  # Require more samples
+                subsample=0.8,
+                colsample_bytree=0.8,
+                reg_alpha=0.1,
+                reg_lambda=1.0,
+                random_state=42
+            ), 'name' : 'Light GBM'},
+            'xgboost': {
+                'model': XGBClassifier(
+                    n_estimators=100,
+                    max_depth=4,
+                    learning_rate=0.05,
+                    min_child_weight=20, 
+                    subsample=0.8,
+                    colsample_bytree=0.8,
+                    reg_alpha=0.1,
+                    reg_lambda=1.0,
+                    random_state=42
+                ),
+                'name': 'XGBoost'
             }
         }
     
