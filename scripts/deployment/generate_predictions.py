@@ -77,17 +77,86 @@ class UnifiedPredictionGenerator:
             raise ValueError(f"Unknown target_db: {target_db}")
     
     def _load_models(self):
-        """Load both VADER and FinBERT models"""
+        """Load both VADER and FinBERT models - automatically select best available"""
         try:
-            self.vader_model = self.model_manager.load_model('vader', 'random_forest')
-            self.logger.info(f"Loaded VADER model: {self.vader_model['version']}")
+            # Get best model for VADER
+            vader_best = self._get_best_model('vader')
+            self.vader_model = self.model_manager.load_model('vader', vader_best)
+            self.logger.info(f"Loaded VADER model: {vader_best} (version: {self.vader_model['version']})")
             
-            self.finbert_model = self.model_manager.load_model('finbert', 'random_forest')
-            self.logger.info(f"Loaded FinBERT model: {self.finbert_model['version']}")
+            # Get best model for FinBERT
+            finbert_best = self._get_best_model('finbert')
+            self.finbert_model = self.model_manager.load_model('finbert', finbert_best)
+            self.logger.info(f"Loaded FinBERT model: {finbert_best} (version: {self.finbert_model['version']})")
             
         except Exception as e:
             self.logger.error(f"Failed to load models: {e}")
             raise
+
+    def _get_best_model(self, feature_set: str) -> str:
+        """
+        Automatically detect the best available model for a feature set
+        by finding the most recent model with best validation accuracy
+        """
+        import json
+        from pathlib import Path
+        
+        models_dir = Path(f"models/saved_models/{feature_set}")
+        
+        if not models_dir.exists():
+            raise FileNotFoundError(f"Models directory not found: {models_dir}")
+        
+        best_model_type = None
+        best_accuracy = -1
+        best_timestamp = None
+        
+        # Iterate through all model type directories
+        for model_type_dir in models_dir.iterdir():
+            if not model_type_dir.is_dir():
+                continue
+            
+            model_type = model_type_dir.name
+            
+            # Find all metadata files in this model type directory
+            metadata_files = list(model_type_dir.glob("metadata_*.json"))
+            
+            if not metadata_files:
+                continue
+            
+            # Get the most recent metadata file
+            latest_metadata = max(metadata_files, key=lambda p: p.stem.split('_')[1])
+            
+            try:
+                with open(latest_metadata, 'r') as f:
+                    metadata = json.load(f)
+                
+                # Get validation accuracy (or test accuracy as fallback)
+                val_accuracy = metadata.get('validation_metrics', {}).get('accuracy')
+                if val_accuracy is None:
+                    val_accuracy = metadata.get('test_metrics', {}).get('accuracy', 0)
+                
+                # Extract timestamp from filename
+                timestamp_str = latest_metadata.stem.split('_', 1)[1]
+                
+                # Update best model if this one is better
+                if val_accuracy > best_accuracy or (val_accuracy == best_accuracy and timestamp_str > best_timestamp):
+                    best_accuracy = val_accuracy
+                    best_model_type = model_type
+                    best_timestamp = timestamp_str
+                    
+            except Exception as e:
+                self.logger.warning(f"Could not read metadata for {model_type}: {e}")
+                continue
+        
+        if best_model_type is None:
+            raise FileNotFoundError(f"No valid models found for {feature_set}")
+        
+        self.logger.info(
+            f"Selected best model for {feature_set}: {best_model_type} "
+            f"(val_accuracy: {best_accuracy:.4f}, timestamp: {best_timestamp})"
+        )
+        
+        return best_model_type
     
     def get_features_without_predictions(
         self, 
