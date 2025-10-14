@@ -1,0 +1,63 @@
+{
+  "feature_set": "finbert",
+  "model_type": "random_forest",
+  "test_metrics": {
+    "accuracy": 0.5655737704918032,
+    "precision": 0.5636363636363636,
+    "recall": 0.5166666666666667,
+    "f1_score": 0.5391304347826087,
+    "roc_auc": 0.5862903225806453,
+    "confusion_matrix": [
+      [
+        38,
+        24
+      ],
+      [
+        29,
+        31
+      ]
+    ],
+    "classification_report": {
+      "0": {
+        "precision": 0.5671641791044776,
+        "recall": 0.6129032258064516,
+        "f1-score": 0.5891472868217055,
+        "support": 62.0
+      },
+      "1": {
+        "precision": 0.5636363636363636,
+        "recall": 0.5166666666666667,
+        "f1-score": 0.5391304347826087,
+        "support": 60.0
+      },
+      "accuracy": 0.5655737704918032,
+      "macro avg": {
+        "precision": 0.5654002713704206,
+        "recall": 0.5647849462365592,
+        "f1-score": 0.5641388608021571,
+        "support": 122.0
+      },
+      "weighted avg": {
+        "precision": 0.565429187890651,
+        "recall": 0.5655737704918032,
+        "f1-score": 0.5645488349991988,
+        "support": 122.0
+      }
+    }
+  },
+  "feature_columns": [
+    "hour",
+    "sma_7",
+    "rsi_14",
+    "price_usd",
+    "is_weekend",
+    "return_24h",
+    "volume_24h",
+    "day_of_week",
+    "volatility_24h",
+    "finbert_neutral",
+    "finbert_compound",
+    "finbert_negative",
+    "finbert_positive"
+  ]
+}

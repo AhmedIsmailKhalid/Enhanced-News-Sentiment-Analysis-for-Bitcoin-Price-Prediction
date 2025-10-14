@@ -1,0 +1,63 @@
+{
+  "feature_set": "vader",
+  "model_type": "xgboost",
+  "test_metrics": {
+    "accuracy": 0.5378787878787878,
+    "precision": 0.532258064516129,
+    "recall": 0.5076923076923077,
+    "f1_score": 0.5196850393700787,
+    "roc_auc": 0.5110218140068887,
+    "confusion_matrix": [
+      [
+        38,
+        29
+      ],
+      [
+        32,
+        33
+      ]
+    ],
+    "classification_report": {
+      "0": {
+        "precision": 0.5428571428571428,
+        "recall": 0.5671641791044776,
+        "f1-score": 0.5547445255474452,
+        "support": 67.0
+      },
+      "1": {
+        "precision": 0.532258064516129,
+        "recall": 0.5076923076923077,
+        "f1-score": 0.5196850393700787,
+        "support": 65.0
+      },
+      "accuracy": 0.5378787878787878,
+      "macro avg": {
+        "precision": 0.5375576036866359,
+        "recall": 0.5374282433983926,
+        "f1-score": 0.537214782458762,
+        "support": 132.0
+      },
+      "weighted avg": {
+        "precision": 0.5376378997346739,
+        "recall": 0.5378787878787878,
+        "f1-score": 0.5374803846267724,
+        "support": 132.0
+      }
+    }
+  },
+  "feature_columns": [
+    "hour",
+    "sma_7",
+    "rsi_14",
+    "price_usd",
+    "is_weekend",
+    "return_24h",
+    "volume_24h",
+    "day_of_week",
+    "vader_neutral",
+    "vader_compound",
+    "vader_negative",
+    "vader_positive",
+    "volatility_24h"
+  ]
+}
