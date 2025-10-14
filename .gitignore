@@ -56,10 +56,10 @@ logs/
 *.sqlite3
 
 # Model Artifacts
-models/saved_models/*
-!models/saved_models/.gitkeep
-models/experiments/*
-!models/experiments/.gitkeep
+# models/saved_models/*
+# !models/saved_models/.gitkeep
+# models/experiments/*
+# !models/experiments/.gitkeep
 
 # Data
 data/collected/*

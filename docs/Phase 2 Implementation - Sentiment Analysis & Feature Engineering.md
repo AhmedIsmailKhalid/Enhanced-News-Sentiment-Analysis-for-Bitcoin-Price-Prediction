@@ -135,95 +135,53 @@ This enables independent model comparison without cross-contamination.
 
 #### **1. Price Feature Engineering**
 - **File:** `src/data_processing/feature_engineering/price_features.py`
-- **Total Features:** 40+ price-based indicators
+- **Total Features:** 6 price-based indicators
 
 **Feature Categories:**
 
-**Price Returns:**
-- Simple returns: 1h, 6h, 24h, 7d
-- Log returns: 1h, 24h (more stable for ML)
+**Price Features:**
+- Price In USD
 
 **Technical Indicators:**
-- Simple Moving Averages (SMA): 7, 30, 90 periods
-- Exponential Moving Averages (EMA): 7, 30 periods
-- Relative Strength Index (RSI): 14 periods
-- Bollinger Bands: upper, middle, lower, width, position
-- MACD: line, signal, histogram
+- Simple Moving Averages (SMA): 7
 
 **Volatility Features:**
-- Rolling volatility: 24h, 7d
-- Average True Range (ATR): 14 periods
+- Rolling volatility: 24h
 
 **Volume Features:**
-- Volume moving averages: 7, 30 periods
-- Volume ratios: current vs 7-day, 30-day average
-- Volume change rate
+- Volume moving averages: 24h
 
 #### **2. Sentiment Feature Engineering**
 - **File:** `src/data_processing/feature_engineering/sentiment_features.py`
 - **Separate Methods:**
-  - `create_vader_features()` - VADER-specific features (48 features)
-  - `create_finbert_features()` - FinBERT-specific features (53 features)
+  - `create_vader_features()` - VADER-specific features (4 features)
+  - `create_finbert_features()` - FinBERT-specific features (4 features)
 
-**VADER Features (48 total):**
+**VADER Features (4 total):**
 
-**Hourly Aggregations:**
-- Mean sentiment: 1h, 6h, 24h windows
-- Standard deviation: 1h, 6h, 24h windows
-- Min/Max sentiment: 1h, 6h, 24h windows
-- Range: 1h, 6h, 24h windows
+**Sentiment Scores:**
+- Positive Sentiment Score: what % of text is positive
+- Negative Sentiment Score: what % of text is negative
+- Neutral Sentiment Score: what % of text is neutral
+- Compound Sentiment Score: the overall final weighted average sentiment score of the text (-1,+1) where -1 is extremely negative, 0 neutral and +1 extremely positive
 
-**Sentiment Changes:**
-- Change: 1h, 6h, 24h periods
-- Rate of change: 1h, 24h periods
 
-**News Volume:**
-- Article counts: 1h, 6h, 24h windows
-- News velocity (change in article count)
-
-**Sentiment Momentum:**
-- Sentiment moving averages: 7, 30 periods
-- Position above/below moving averages
-- Sentiment streak (consecutive positive/negative)
-
-**Extreme Sentiment:**
-- Extreme positive flag (>0.5)
-- Extreme negative flag (<-0.5)
-- Extreme count: 6h, 24h windows
-
-**FinBERT Features (53 total):**
-- All VADER features (48)
-- **Plus confidence-weighted features (5):**
-  - Confidence-weighted sentiment
-  - Weighted mean: 6h, 24h windows
-  - Average confidence: 6h, 24h windows
+**FinBERT Features (4 total):**
+- Positive Sentiment Score: what % of text is positive
+- Negative Sentiment Score: what % of text is negative
+- Neutral Sentiment Score: what % of text is neutral
+- Compound Sentiment Score: the overall final weighted average sentiment score of the text (-1,+1) where -1 is extremely negative, 0 neutral and +1 extremely positive
 
 #### **3. Temporal Feature Engineering**
 - **File:** `src/data_processing/feature_engineering/temporal_features.py`
-- **Total Features:** 23 temporal indicators
+- **Total Features:** 3 temporal indicators
 
 **Time Components:**
 - Hour of day (0-23)
 - Day of week (0-6)
-- Day of month (1-31)
-- Month (1-12)
-- Week of year (1-52)
-- Quarter (1-4)
-
-**Cyclical Encodings (preserves cyclic nature):**
-- Hour: sin/cos transformations
-- Day of week: sin/cos transformations
-- Day of month: sin/cos transformations
-- Month: sin/cos transformations
 
 **Time Flags:**
 - Weekend indicator
-- Business hours (9 AM - 5 PM UTC)
-- US market hours (14:30 - 21:00 UTC)
-- Asian market hours (0:00 - 8:00 UTC)
-- European market hours (8:00 - 16:30 UTC)
-- Month start/end indicators
-- Quarter start/end indicators
 
 #### **4. Feature Combiner**
 - **File:** `src/data_processing/feature_engineering/feature_combiner.py`
@@ -240,8 +198,8 @@ This enables independent model comparison without cross-contamination.
 8. Merge into FinBERT dataset (FinBERT + Price + Temporal)
 
 **Output:**
-- VADER dataset: 107 features
-- FinBERT dataset: 112 features
+- VADER dataset: 13 features
+- FinBERT dataset: 13 features
 
 #### **5. Feature Storage Manager**
 - **File:** `src/data_processing/feature_engineering/feature_storage.py`
