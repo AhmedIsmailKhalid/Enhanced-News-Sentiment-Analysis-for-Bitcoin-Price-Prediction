@@ -78,18 +78,44 @@ def convert_numpy_types(obj):
 
 @app.on_event("startup")
 async def startup_event():
-    """Pre-load models on startup for faster first requests"""
+    """Pre-load best models on startup"""
     logger.info("Starting FastAPI application...")
-    logger.info("Pre-loading default models...")
+    logger.info("Pre-loading best available models...")
     
     try:
-        # Pre-load VADER random forest
-        model_manager.load_model('vader', 'random_forest')
-        logger.info("✅ Loaded VADER random_forest model")
+        # Get best models dynamically
+        from pathlib import Path
+        import json
         
-        # Pre-load FinBERT random forest
-        model_manager.load_model('finbert', 'random_forest')
-        logger.info("✅ Loaded FinBERT random_forest model")
+        def get_best_model(feature_set):
+            models_dir = Path(f"models/saved_models/{feature_set}")
+            best_model = None
+            best_accuracy = -1
+            
+            for model_dir in models_dir.iterdir():
+                if not model_dir.is_dir():
+                    continue
+                metadata_files = list(model_dir.glob("metadata_*.json"))
+                if metadata_files:
+                    latest_meta = max(metadata_files, key=lambda p: p.stem.split('_')[1])
+                    with open(latest_meta) as f:
+                        meta = json.load(f)
+                    val_acc = meta.get('validation_metrics', {}).get('accuracy', 0)
+                    if val_acc > best_accuracy:
+                        best_accuracy = val_acc
+                        best_model = model_dir.name
+            return best_model
+        
+        vader_best = get_best_model('vader')
+        finbert_best = get_best_model('finbert')
+        
+        if vader_best:
+            model_manager.load_model('vader', vader_best)
+            logger.info(f"✅ Loaded VADER {vader_best} model")
+        
+        if finbert_best:
+            model_manager.load_model('finbert', finbert_best)
+            logger.info(f"✅ Loaded FinBERT {finbert_best} model")
         
         logger.info("FastAPI application ready")
     except Exception as e:
