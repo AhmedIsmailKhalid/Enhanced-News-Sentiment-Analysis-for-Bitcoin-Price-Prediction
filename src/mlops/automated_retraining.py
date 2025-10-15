@@ -141,10 +141,7 @@ class AutomatedRetraining:
             # Step 2: Create target variable
             self.logger.info("Step 2: Creating target variable...")
             target_gen = TargetGenerator()
-            features_with_target = target_gen.create_target(
-                df=features_df,
-                prediction_horizon_hours=1
-            )
+            features_with_target = target_gen.create_target(features_df)
             
             # Step 3: Prepare training data
             self.logger.info("Step 3: Preparing training data...")
