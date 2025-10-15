@@ -3,6 +3,7 @@ FastAPI Application for Bitcoin Sentiment Price Prediction
 Production-grade ML model serving with prediction logging
 """
 
+import os
 from datetime import datetime
 from typing import Optional
 
@@ -28,10 +29,25 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Add CORS middleware
+'''Local Deployment'''
+# # Add CORS middleware
+# app.add_middleware(
+#     CORSMiddleware,
+#     allow_origins=["*"],  # In production, specify actual origins
+#     allow_credentials=True,
+#     allow_methods=["*"],
+#     allow_headers=["*"],
+# )
+
+'''Deolpyment on Render.com'''
+allowed_origins = os.getenv(
+    "ALLOWED_ORIGINS",
+    "http://localhost:3000"
+).split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify actual origins
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

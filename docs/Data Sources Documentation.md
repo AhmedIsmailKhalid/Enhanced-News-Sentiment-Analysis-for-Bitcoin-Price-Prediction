@@ -122,10 +122,10 @@ Based on our feature engineering requirements, we need full OHLCV data:
 
 | **Approach** | **Pros** | **Cons** | **Decision** |
 |--------------|----------|----------|--------------|
-| **Real-time Streaming** | Immediate data, impressive demos | Complex infrastructure, harder debugging | ❌ Too complex for scope |
-| **Hourly Batch** | Simple, reliable | Too slow for engagement | ❌ Not responsive enough |
-| **15-min Micro-batch** | Near real-time, manageable complexity | Slight data lag | ✅ **Selected** |
-| **Daily Batch** | Very simple | Too slow, poor user experience | ❌ Insufficient frequency |
+| **Real-time Streaming** | Immediate data, impressive demos | Complex infrastructure, harder debugging | Too complex for scope |
+| **Hourly Batch** | Simple, reliable | Too slow for engagement | Not responsive enough |
+| **15-min Micro-batch** | Near real-time, manageable complexity | Slight data lag | **Selected** |
+| **Daily Batch** | Very simple | Too slow, poor user experience | Insufficient frequency |
 
 ### **Collection Schedule:**
 - **Price Data:** Every 15 minutes
@@ -265,11 +265,6 @@ def collect_price_data():
 - **Data Source:** RSS feed articles (CoinDesk, Cointelegraph, Decrypt)
 - **Processing:** VADER + TextBlob sentiment analysis
 - **Aggregation:** Hourly sentiment mean, count, change, extremes
-
-#### **Social Features:**
-- **Data Source:** Reddit posts and comments
-- **Processing:** Volume counting, engagement analysis
-- **Metrics:** Social volume, social sentiment
 
 #### **Temporal Features:**
 - **Data Source:** Timestamp from all sources

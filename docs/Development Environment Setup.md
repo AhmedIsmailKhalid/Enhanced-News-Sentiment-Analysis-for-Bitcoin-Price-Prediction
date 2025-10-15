@@ -12,11 +12,11 @@
 ## Local Development Requirements
 
 ### **Pre-installed Components (Confirmed)**
-- ✅ **Python 3.11.6** with IDLE and VS Code debugger
-- ✅ **Git CLI** for version control and MLOps workflows
-- ✅ **Node.js v18.8.0** for MLOps dashboard development
-- ✅ **npm v10.8.0** for frontend package management
-- ✅ **NeonDB** (external, production database for feature store)
+- **Python 3.11.6** with IDLE and VS Code debugger
+- **Git CLI** for version control and MLOps workflows
+- **Node.js v18.8.0** for MLOps dashboard development
+- **npm v10.8.0** for frontend package management
+- **NeonDB** (external, production database for feature store)
 
 ### **Additional Requirements for MLOps Development**
 - **Docker Desktop** - containerized local ML services
