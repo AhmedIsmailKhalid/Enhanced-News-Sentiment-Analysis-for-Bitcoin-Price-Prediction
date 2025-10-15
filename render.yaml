@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: bitcoin-sentiment-api
+    name: bitcoin-sentiment-price-prediction-backend-fastapi
     runtime: python
     region: oregon
     plan: free
