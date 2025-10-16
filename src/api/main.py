@@ -42,7 +42,7 @@ app = FastAPI(
 '''Deolpyment on Render.com'''
 allowed_origins = os.getenv(
     "ALLOWED_ORIGINS",
-    "http://localhost:3000"
+    "http://localhost:3000,https://enhanced-news-sentiment-analysis-fo.vercel.app", #"http://localhost:3000",
 ).split(",")
 
 app.add_middleware(

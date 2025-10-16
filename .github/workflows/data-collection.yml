@@ -10,6 +10,17 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
+      - name: Free disk space
+        run: |
+          echo "Before cleanup:"
+          df -h
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          echo "After cleanup:"
+          df -h
+
       - name: Checkout code
         uses: actions/checkout@v4
       
@@ -18,15 +29,15 @@ jobs:
         with:
           python-version: '3.11'
       
-      - name: Cache Poetry dependencies
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cache/pypoetry
-            ~/.cache/pip
-          key: ${{ runner.os }}-poetry-${{ hashFiles('**/poetry.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-poetry-
+      # - name: Cache Poetry dependencies
+      #   uses: actions/cache@v3
+      #   with:
+      #     path: |
+      #       ~/.cache/pypoetry
+      #       ~/.cache/pip
+      #     key: ${{ runner.os }}-poetry-${{ hashFiles('**/poetry.lock') }}
+      #     restore-keys: |
+      #       ${{ runner.os }}-poetry-
       
       - name: Install Poetry
         run: |
