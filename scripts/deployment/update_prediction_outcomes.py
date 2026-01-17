@@ -4,8 +4,13 @@ Checks predictions made 1+ hours ago and updates their outcomes based on actual 
 """
 
 import sys
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+# Add project root to Python path FIRST - before any src imports
+project_root = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(project_root))
+
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from sqlalchemy import func
@@ -13,11 +18,6 @@ from sqlalchemy import func
 from src.shared.database import SessionLocal
 from src.shared.logging import get_logger
 from src.shared.models import PredictionLog, PriceData
-
-# Add project root to Python path
-project_root = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(project_root))
-
 
 logger = get_logger(__name__)
 
