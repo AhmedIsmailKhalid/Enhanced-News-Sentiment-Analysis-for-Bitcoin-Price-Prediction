@@ -3,10 +3,25 @@
 import { useEffect, useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { apiClient } from '@/lib/api';
+import { saveToCache, loadFromCache, formatCacheAge, isCacheStale } from '@/lib/cache';
 
-export default function PredictionConfidenceCard() {
-  const [accuracyData, setAccuracyData] = useState<any>(null);
+interface AccuracyCacheData {
+  chartData: Array<{
+    window: number;
+    vader: number | null;
+    finbert: number | null;
+  }>;
+  vaderOverall: number;
+  finbertOverall: number;
+}
+
+const CACHE_KEY = 'model_accuracy';
+
+export default function PredictionAccuracyCard() {
+  const [accuracyData, setAccuracyData] = useState<AccuracyCacheData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isStale, setIsStale] = useState(false);
+  const [cacheAge, setCacheAge] = useState<string | null>(null);
 
   useEffect(() => {
     loadAccuracyData();
@@ -18,49 +33,49 @@ export default function PredictionConfidenceCard() {
 
   const loadAccuracyData = async () => {
     try {
-      // Get predictions with outcomes only
-      const response = await apiClient.getRecentPredictions(undefined, 100);
-      
-      if (response.predictions && response.predictions.length > 0) {
-        // Filter predictions with outcomes
-        const predictionsWithOutcomes = response.predictions.filter(
-          (p: any) => p.actual_direction !== null
-        );
+      // 1. Try to load from cache first
+      const cached = loadFromCache<AccuracyCacheData>(CACHE_KEY);
+      if (cached) {
+        console.log('Loading accuracy data from cache');
+        setAccuracyData(cached.data);
         
-        if (predictionsWithOutcomes.length === 0) {
-          setAccuracyData({ chartData: [], vaderAvg: null, finbertAvg: null });
-          setLoading(false);
-          return;
-        }
+        const isDataStale = isCacheStale(cached.metadata.cachedAt, 60);
+        setIsStale(isDataStale);
+        setCacheAge(formatCacheAge(cached.metadata.cachedAt));
         
-        // Separate VADER and FinBERT predictions
-        const vaderPreds = predictionsWithOutcomes
-          .filter((p: any) => p.feature_set === 'vader')
-          .reverse(); // Oldest first
-        
-        const finbertPreds = predictionsWithOutcomes
-          .filter((p: any) => p.feature_set === 'finbert')
-          .reverse();
-        
-        // Calculate rolling accuracy (window of 10 predictions)
-        const vaderRollingAccuracy = calculateRollingAccuracy(vaderPreds, 10);
-        const finbertRollingAccuracy = calculateRollingAccuracy(finbertPreds, 10);
-        
-        // Combine for chart
-        const combinedData = combineAccuracyData(vaderRollingAccuracy, finbertRollingAccuracy);
-        
-        // Calculate overall accuracy
-        const vaderAvg = vaderPreds.filter((p: any) => p.prediction_correct).length / vaderPreds.length;
-        const finbertAvg = finbertPreds.filter((p: any) => p.prediction_correct).length / finbertPreds.length;
-        
-        setAccuracyData({
-          chartData: combinedData,
-          vaderAvg,
-          finbertAvg,
-          vaderCount: vaderPreds.length,
-          finbertCount: finbertPreds.length
-        });
+        setLoading(false);
       }
+
+      // 2. Fetch fresh data from API (with golden dataset fallback)
+      const [vaderResponse, finbertResponse] = await Promise.all([
+        apiClient.getModelAccuracy('vader', 'random_forest'),
+        apiClient.getModelAccuracy('finbert', 'random_forest'),
+      ]);
+
+      // Extract accuracy stats from response
+      const vaderStats = vaderResponse.accuracy_stats;
+      const finbertStats = finbertResponse.accuracy_stats;
+
+      // Get rolling window accuracy for chart
+      const rollingWindows = [10, 20, 30, 40, 50];
+      const chartData = rollingWindows.map(window => ({
+        window: window,
+        vader: vaderStats.accuracy_by_window?.[window] ? vaderStats.accuracy_by_window[window] * 100 : null,
+        finbert: finbertStats.accuracy_by_window?.[window] ? finbertStats.accuracy_by_window[window] * 100 : null,
+      }));
+
+      const newData = {
+        chartData,
+        vaderOverall: vaderStats.overall_accuracy * 100,
+        finbertOverall: finbertStats.overall_accuracy * 100,
+      };
+
+      setAccuracyData(newData);
+      setIsStale(false);
+      setCacheAge(null);
+
+      // Save to cache
+      saveToCache<AccuracyCacheData>(CACHE_KEY, newData);
     } catch (error) {
       console.error('Failed to load accuracy data:', error);
     } finally {
@@ -68,62 +83,25 @@ export default function PredictionConfidenceCard() {
     }
   };
 
-  const calculateRollingAccuracy = (predictions: any[], windowSize: number) => {
-    if (predictions.length < windowSize) return [];
-    
-    const rolling = [];
-    for (let i = windowSize - 1; i < predictions.length; i++) {
-      const window = predictions.slice(i - windowSize + 1, i + 1);
-      const correct = window.filter((p: any) => p.prediction_correct).length;
-      const accuracy = correct / windowSize;
-      
-      rolling.push({
-        index: i + 1,
-        accuracy: accuracy * 100 // Convert to percentage
-      });
-    }
-    
-    return rolling;
-  };
-
-  const combineAccuracyData = (vaderData: any[], finbertData: any[]) => {
-    const combined = [];
-    const maxLength = Math.max(vaderData.length, finbertData.length);
-    
-    for (let i = 0; i < maxLength; i++) {
-      const entry: any = { index: i + 1 };
-      
-      if (vaderData[i]) {
-        entry.vader = vaderData[i].accuracy;
-      }
-      
-      if (finbertData[i]) {
-        entry.finbert = finbertData[i].accuracy;
-      }
-      
-      combined.push(entry);
-    }
-    
-    return combined;
-  };
-
-  if (loading) {
+  if (loading && !accuracyData) {
     return (
       <div className="bg-white rounded-lg shadow p-6">
         <div className="animate-pulse">
-          <div className="h-6 bg-gray-200 rounded w-1/3 mb-4"></div>
+          <div className="h-6 bg-gray-200 rounded w-2/3 mb-4"></div>
           <div className="h-64 bg-gray-200 rounded"></div>
         </div>
       </div>
     );
   }
 
-  if (!accuracyData || accuracyData.chartData.length === 0) {
+  if (!accuracyData) {
     return (
       <div className="bg-white rounded-lg shadow p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Model Accuracy (Rolling 10)</h3>
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">
+          Model Accuracy (Rolling Window)
+        </h3>
         <div className="flex items-center justify-center h-64 text-gray-500">
-          <p>Need 10+ predictions with outcomes to show accuracy</p>
+          <p>No accuracy data available</p>
         </div>
       </div>
     );
@@ -131,57 +109,78 @@ export default function PredictionConfidenceCard() {
 
   return (
     <div className="bg-white rounded-lg shadow p-6">
-      <h3 className="text-lg font-semibold text-gray-900 mb-4">Model Accuracy (Rolling Window)</h3>
-      
-      {/* Overall Accuracy */}
-      <div className="grid grid-cols-2 gap-4 mb-4">
-        <div>
+      {/* Stale Data Warning Banner */}
+      {isStale && cacheAge && (
+        <div className="mb-4 px-4 py-2 bg-yellow-50 border border-yellow-200 rounded-lg">
+          <div className="flex items-center space-x-2">
+            <span className="text-yellow-600">⚠️</span>
+            <span className="text-sm text-yellow-800">
+              Showing cached data from <strong>{cacheAge}</strong>. Fetching live data...
+            </span>
+          </div>
+        </div>
+      )}
+
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-semibold text-gray-900">
+          Model Accuracy (Rolling Window)
+        </h3>
+        {!isStale && (
+          <span className="px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded">
+            ● Live
+          </span>
+        )}
+      </div>
+
+      <div className="grid grid-cols-2 gap-4 mb-6">
+        <div className="text-center p-4 bg-cyan-50 rounded-lg">
           <p className="text-sm text-gray-600">VADER Overall</p>
-          <p className="text-2xl font-bold text-cyan-600">
-            {accuracyData.vaderAvg !== null 
-              ? `${(accuracyData.vaderAvg * 100).toFixed(1)}%`
-              : 'N/A'}
+          <p className="text-3xl font-bold text-cyan-600">
+            {accuracyData.vaderOverall ? accuracyData.vaderOverall.toFixed(1) : '0.0'}%
           </p>
-          <p className="text-xs text-gray-500">
-            {accuracyData.vaderCount} predictions with outcomes
+          <p className="text-xs text-gray-500 mt-1">
+            All predictions with outcomes
           </p>
         </div>
-        <div>
+
+        <div className="text-center p-4 bg-rose-50 rounded-lg">
           <p className="text-sm text-gray-600">FinBERT Overall</p>
-          <p className="text-2xl font-bold text-rose-600">
-            {accuracyData.finbertAvg !== null 
-              ? `${(accuracyData.finbertAvg * 100).toFixed(1)}%`
-              : 'N/A'}
+          <p className="text-3xl font-bold text-rose-600">
+            {accuracyData.finbertOverall ? accuracyData.finbertOverall.toFixed(1) : '0.0'}%
           </p>
-          <p className="text-xs text-gray-500">
-            {accuracyData.finbertCount} predictions with outcomes
+          <p className="text-xs text-gray-500 mt-1">
+            All predictions with outcomes
           </p>
         </div>
       </div>
 
-      {/* Chart */}
-      <ResponsiveContainer width="100%" height={250}>
+      <ResponsiveContainer width="100%" height={240}>
         <LineChart data={accuracyData.chartData}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
           <XAxis 
-            dataKey="index" 
+            dataKey="window" 
+            label={{ value: 'Prediction Window', position: 'insideBottom', offset: -5 }}
             stroke="#6b7280"
             style={{ fontSize: '12px' }}
-            label={{ value: 'Prediction #', position: 'insideBottom', offset: -5 }}
           />
           <YAxis 
+            label={{ value: 'Accuracy (%)', angle: -90, position: 'insideLeft' }}
+            domain={[0, 100]}
             stroke="#6b7280"
             style={{ fontSize: '12px' }}
-            domain={[0, 100]}
-            tickFormatter={(value) => `${value}%`}
           />
           <Tooltip 
             contentStyle={{
               backgroundColor: 'white',
               border: '1px solid #e5e7eb',
               borderRadius: '8px',
+              padding: '8px'
             }}
-            formatter={(value: number) => [`${value.toFixed(1)}%`, '']}
+            formatter={(value: unknown) => {
+              const numValue = value as number | null;
+              if (numValue === null || numValue === undefined) return ['N/A', ''];
+              return [`${numValue.toFixed(1)}%`, ''];
+            }}
           />
           <Legend />
           <Line 
@@ -189,25 +188,25 @@ export default function PredictionConfidenceCard() {
             dataKey="vader" 
             stroke="#06b6d4" 
             strokeWidth={2}
-            name="VADER Accuracy"
-            dot={{ r: 3 }}
+            name="VADER"
             connectNulls
+            dot={{ r: 4 }}
           />
           <Line 
             type="monotone" 
             dataKey="finbert" 
             stroke="#f43f5e" 
             strokeWidth={2}
-            name="FinBERT Accuracy"
-            dot={{ r: 3 }}
+            name="FinBERT"
             connectNulls
+            dot={{ r: 4 }}
           />
         </LineChart>
       </ResponsiveContainer>
-      
-      <p className="text-xs text-gray-500 mt-2 text-center">
-        Rolling accuracy calculated over 10-prediction windows
-      </p>
+
+      <div className="mt-4 text-xs text-gray-500 text-center">
+        Rolling accuracy calculated over 10, 20, 30, 40, 50 prediction windows
+      </div>
     </div>
   );
 }

@@ -61,6 +61,12 @@ logs/
 # models/experiments/*
 # !models/experiments/.gitkeep
 
+# Backup folder
+Backups
+
+# Version History
+Version History.md
+
 # Data
 data/collected/*
 !data/collected/.gitkeep
@@ -90,3 +96,9 @@ Thumbs.db
 *.temp
 *.bak
 *.backup
+
+# Architecture Diagram XML
+assets/Bitcoin_Architecture_diagram.drawio
+
+# Versions
+Version

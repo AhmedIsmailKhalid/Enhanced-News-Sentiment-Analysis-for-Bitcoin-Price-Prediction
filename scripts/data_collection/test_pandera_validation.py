@@ -1,7 +1,7 @@
 """
 Test Pandera validation with collected data
 """
-# ruff : noqa
+# ruff : noqa : E402
 
 import sys
 from pathlib import Path
@@ -16,17 +16,17 @@ from src.shared.logging import setup_logging
 
 def test_price_validation():
     """Test price data validation"""
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("Testing Price Data Pandera Validation")
-    print("="*60)
-    
+    print("=" * 60)
+
     collector = PriceCollector()
-    
+
     # Collect data
     print("\n→ Collecting price data...")
     data = collector.collect_data()
     print(f"✓ Collected {len(data)} records")
-    
+
     # Validate with Pandera
     print("\n→ Validating with Pandera...")
     try:
@@ -44,17 +44,17 @@ def test_price_validation():
 
 def test_news_validation():
     """Test news data validation"""
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("Testing News Data Pandera Validation")
-    print("="*60)
-    
+    print("=" * 60)
+
     collector = NewsCollector()
-    
+
     # Collect data
     print("\n→ Collecting news data...")
     data = collector.collect_data()
     print(f"✓ Collected {len(data)} records")
-    
+
     # Validate with Pandera
     print("\n→ Validating with Pandera...")
     try:
@@ -72,27 +72,27 @@ def test_news_validation():
 
 def main():
     setup_logging(log_level="INFO")
-    
-    print("="*60)
+
+    print("=" * 60)
     print("Pandera Validation Test Suite")
-    print("="*60)
-    
+    print("=" * 60)
+
     results = {
-        'price': test_price_validation(),
-        'news': test_news_validation(),
+        "price": test_price_validation(),
+        "news": test_news_validation(),
     }
-    
+
     # Summary
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("Validation Test Summary")
-    print("="*60)
-    
+    print("=" * 60)
+
     for data_type, success in results.items():
         status = "✓" if success else "✗"
         print(f"{status} {data_type.capitalize()} validation")
-    
+
     all_passed = all(results.values())
-    
+
     if all_passed:
         print("\n✓ All Pandera validations passed")
         return 0

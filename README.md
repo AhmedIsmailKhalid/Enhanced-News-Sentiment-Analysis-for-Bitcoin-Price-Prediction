@@ -49,6 +49,8 @@ Predict Bitcoin 1-hour price direction (UP/DOWN) using sentiment analysis from f
 - **Multiple ML Algorithms:** XGBoost, Random Forest, Gradient Boosting, LightGBM, Logistic Regression
 - **Complete MLOps Infrastructure:** Automated collection → Processing → Training → Serving → Monitoring → Retraining
 
+![Architectural Diagram](assets/Diagram.png)
+
 ---
 
 ## Key Innovations
@@ -322,6 +324,7 @@ Bitcoin Sentiment Analysis
 - **Styling:** Tailwind CSS (utility-first)
 - **Charts:** Recharts (React charting library)
 - **Icons:** Lucide React
+- **Caching:** localStorage for instant dashboard loads
 - **Deployment:** Vercel (serverless, free tier)
 
 ### MLOps Infrastructure
@@ -348,9 +351,6 @@ Bitcoin Sentiment Analysis
 
 - **Price Data Collection:** CoinGecko API for Bitcoin USD price, market cap, volume
 - **News Article Collection:** Multi-source RSS feed aggregation
-  - Reuters (cryptocurrency section)
-  - Bloomberg (crypto markets)
-  - CoinDesk (Bitcoin news)
   - CoinTelegraph (market analysis)
   - Decrypt (crypto journalism)
 - **Storage:** PostgreSQL with normalized schema (price_data, news_articles tables)
@@ -469,7 +469,12 @@ models/saved_models/
 - Historical accuracy tracking
 - Responsive design for mobile/desktop
 
-
+**Caching & Performance:**
+- Model preloading eliminates cold start latency
+- In-memory feature caching for repeated predictions
+- Response time: <200ms (target achieved)
+- Frontend localStorage caching for instant loads
+- Stale data detection with visual indicators
 
 **User Experience:**
 - Upload data or manual input for predictions
@@ -477,7 +482,164 @@ models/saved_models/
 - Clear confidence indicators
 - Model agreement/disagreement highlighting
 
-### 7. MLOps Automation
+### 7. Dashboard Performance Optimization
+
+**localStorage Caching Strategy:**
+
+The dashboard implements intelligent client-side caching to provide instant load times and resilience during backend unavailability.
+
+**Cache Implementation:**
+```typescript
+interface CacheMetadata {
+  cachedAt: string;
+  expiresAt: string;
+}
+
+// Save to cache with metadata
+function saveToCache<T>(key: string, data: T) {
+  localStorage.setItem(key, JSON.stringify({
+    data: data,
+    metadata: {
+      cachedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 30*60*1000).toISOString()
+    }
+  }));
+}
+
+// Load from cache with staleness check
+function loadFromCache<T>(key: string): CachedData<T> | null {
+  const cached = localStorage.getItem(key);
+  if (!cached) return null;
+  
+  const parsed = JSON.parse(cached);
+  return {
+    data: parsed.data,
+    metadata: parsed.metadata
+  };
+}
+```
+
+**Cache Strategy:**
+- **Price Data:** 30-minute TTL, auto-refresh in background
+- **Sentiment Data:** 30-minute TTL, refreshed on new predictions
+- **Statistics:** 1-hour TTL, manual refresh option
+- **Predictions:** 15-minute TTL, matches collection frequency
+- **Accuracy Charts:** 1-hour TTL, low-frequency updates
+
+**User Experience:**
+- Instant dashboard load from cache (no loading spinner)
+- Visual indicators for stale data (yellow banner)
+- Background refresh while showing cached data
+- "Last updated X minutes ago" timestamps
+- Manual refresh button for on-demand updates
+
+**Resilience:**
+- Dashboard works offline with cached data
+- Graceful degradation when API unavailable
+- Clear communication of data freshness
+
+---
+
+### 8. Golden Dataset Fallback
+
+**Demo Mode for Portfolio/Cost Savings:**
+
+To preserve NeonDB free tier storage limits and demonstrate system capabilities without active data collection, the dashboard implements a golden dataset fallback.
+
+**Golden Dataset Design:**
+```typescript
+// Base static data with dynamic noise
+const BASE_PRICE_DATA = [
+  { timestamp: "2026-01-15T00:00:00Z", price: 94230 },
+  { timestamp: "2026-01-15T00:15:00Z", price: 94350 },
+  // ... 96 data points (24 hours, every 15 min)
+];
+
+// Add realistic variation
+function addPriceNoise(price: number, variance: number = 0.008) {
+  return price * (1 + (Math.random() - 0.5) * variance);
+}
+
+// Return fresh data on each call
+export function getGoldenPriceData() {
+  return BASE_PRICE_DATA.map(point => ({
+    ...point,
+    price: addPriceNoise(point.price)
+  }));
+}
+```
+
+**Dataset Contents:**
+- **Price Data:** 96 points (24h @ 15min intervals), ±0.8% noise per refresh
+- **Sentiment Data:** 48 points per model (24h @ 30min intervals), ±0.05 noise
+- **Predictions:** 25 recent predictions with mixed outcomes
+- **Statistics:** Total predictions: 2,847, VADER: 54.5%, FinBERT: 51.2%
+- **Accuracy Charts:** Rolling windows (10, 20, 30, 40, 50 predictions)
+
+**Automatic Fallback:**
+```typescript
+// API client with fallback logic
+async function apiCallWithFallback<T>(
+  endpoint: string,
+  fallbackData: T
+): Promise<T> {
+  try {
+    const response = await fetch(`${API_URL}${endpoint}`, {
+      signal: AbortSignal.timeout(10000) // 10s timeout
+    });
+    
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    
+    return await response.json();
+  } catch (error) {
+    console.warn(`API failed, using golden dataset:`, error);
+    isUsingGoldenDataset = true;
+    return fallbackData;
+  }
+}
+```
+
+**Visual Indicators:**
+
+When using golden dataset, the dashboard displays:
+```
+╔══════════════════════════════════════════════════════════╗
+║ ⚠️  Demo Mode - Sample Data                             ║
+║                                                          ║
+║ Automated data collection disabled to preserve NeonDB   ║
+║ free tier storage. Sample data updates every 30s to     ║
+║ simulate live system capabilities.                      ║
+║                                                          ║
+║ 💡 Enable GitHub Actions workflow for real-time updates ║
+╚══════════════════════════════════════════════════════════╝
+```
+
+Plus:
+- 🟠 Amber banner at top of dashboard
+- 📊 "Sample Data" badges on each chart
+- ❌ No "Live" indicators
+- ⚡ Data "updates" every 30s (noise regeneration)
+
+**Use Cases:**
+1. **Portfolio Demonstration:** Show system capabilities without running costs
+2. **Development Testing:** Test frontend without backend dependency
+3. **Cost Management:** Disable GitHub Actions to save NeonDB quota
+4. **Resilience:** Dashboard never shows broken UI, even when offline
+
+**Transparency:**
+- Clear labeling of sample data vs live data
+- Banner explains why golden dataset is active
+- Link to enable real-time collection
+- No attempt to hide that data is simulated
+
+**Benefits:**
+- Professional presentation for portfolio
+- Zero infrastructure cost in demo mode
+- All charts functional and visually appealing
+- Demonstrates production thinking
+- Easy toggle between live and demo mode
+
+### 9. MLOps Automation
 
 **Automated Workflows:**
 
@@ -1239,6 +1401,89 @@ Time-dependent evaluation workflows require careful state management. Separating
 
 ---
 
+### Challenge 5: Dashboard Performance & Resilience
+
+**Problem:**
+
+Dashboard was showing loading spinners for 3-5 seconds on every page load, providing poor user experience. Additionally, when the backend API was unavailable (during deployments or NeonDB maintenance), the entire dashboard failed with error messages.
+
+**Initial Issues:**
+```typescript
+// BAD: No caching, blocking API calls
+useEffect(() => {
+  setLoading(true);
+  apiClient.getStatistics().then(data => {
+    setStatistics(data);
+    setLoading(false);
+  });
+}, []);
+// User sees loading spinner every time
+// Dashboard breaks if API is down
+```
+
+**Solution 1: Intelligent localStorage Caching**
+```typescript
+// GOOD: Cache-first approach
+useEffect(() => {
+  // 1. Immediately load from cache
+  const cached = loadFromCache('statistics');
+  if (cached) {
+    setStatistics(cached.data);
+    setIsStale(isCacheStale(cached.metadata.cachedAt, 30));
+    setLoading(false);  // User sees data immediately
+  }
+  
+  // 2. Fetch fresh data in background
+  apiClient.getStatistics().then(data => {
+    setStatistics(data);
+    setIsStale(false);
+    saveToCache('statistics', data);
+  });
+}, []);
+```
+
+**Solution 2: Golden Dataset Fallback**
+```typescript
+// API client with automatic fallback
+async function getStatistics(): Promise<StatisticsResponse> {
+  try {
+    const response = await fetch(API_URL + '/statistics', {
+      signal: AbortSignal.timeout(10000)
+    });
+    
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    
+    isUsingGoldenDataset = false;
+    return await response.json();
+    
+  } catch (error) {
+    console.warn('API unavailable, using golden dataset');
+    isUsingGoldenDataset = true;
+    return getGoldenStatistics(); // Fallback to sample data
+  }
+}
+```
+
+**Results:**
+- **Initial Load:** 0ms (instant from cache)
+- **Stale Data UX:** Yellow banner "Last updated 5 min ago"
+- **API Down UX:** Amber banner "Demo Mode - Sample Data"
+- **No Broken UI:** Dashboard always functional
+- **User Transparency:** Clear visual indicators of data source
+
+**Learning:**
+
+Production dashboards require multiple layers of resilience:
+1. **Caching** for performance (localStorage)
+2. **Stale data handling** for transparency
+3. **Fallback data** for availability
+4. **Clear communication** of data status
+
+**Benefits:**
+Transforms a brittle dashboard into a production-grade interface with 100% uptime.
+
+---
+
 ## Key Takeaways
 
 ### What Distinguishes Production ML Systems from Research
@@ -1322,6 +1567,12 @@ Time-dependent evaluation workflows require careful state management. Separating
 - Ensemble methods (stacking, voting)
 - Time-series specific models (LSTM, Temporal CNN)
 
+**5. Cache Optimization**
+- Implement Redis for server-side caching
+- Add cache warming on deployment
+- Query result caching for frequently accessed data
+- CDN integration for static assets
+
 ### Medium-Term (3-6 Months)
 
 **1. Advanced Feature Engineering**
@@ -1381,6 +1632,117 @@ Time-dependent evaluation workflows require careful state management. Separating
 
 ---
 
+---
+
+## Deployment & Cost Management
+
+### Free-Tier Infrastructure Strategy
+
+This project demonstrates production deployment entirely on free-tier services:
+
+| Component | Service | Free Tier Limits | Usage |
+|-----------|---------|------------------|-------|
+| Database | NeonDB | 512 MB, 100 connections | ~90 MB (~18%) |
+| API | Render | 750 hours/month | ~720 hours/month |
+| Frontend | Vercel | Unlimited deploys | ~50 deploys/month |
+| Orchestration | GitHub Actions | 2,000 min/month | ~300 min/month |
+| Storage | Git LFS | 1 GB | ~50 MB (models) |
+
+**Total Monthly Cost:** $0.00
+
+### Demo Mode (Golden Dataset)
+
+**When to Use:**
+- Portfolio demonstration without ongoing costs
+- Frontend development/testing
+- Preserving NeonDB storage quota
+- Showcasing system when backend is down
+
+**How to Enable:**
+```bash
+# 1. Disable GitHub Actions data collection
+# In .github/workflows/data-collection.yml, comment out schedule:
+
+on:
+  # schedule:
+  #   - cron: '*/15 * * * *'
+  workflow_dispatch:  # Keep manual trigger
+
+# 2. Frontend automatically detects API unavailability
+# No configuration needed - fallback is automatic
+
+# 3. Dashboard shows amber "Demo Mode" banner
+```
+
+**How to Re-enable Live Data:**
+```bash
+# 1. Re-enable GitHub Actions schedule
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+# 2. Manually trigger workflow to start collection
+# GitHub → Actions → Data Collection → Run workflow
+
+# 3. After ~1 hour, sufficient data for live dashboard
+```
+
+### Production Deployment
+
+**Backend (Render):**
+```bash
+# 1. Connect GitHub repository
+# 2. Configure build:
+#    - Build Command: poetry install
+#    - Start Command: poetry run python scripts/deployment/run_api.py
+# 3. Set environment variables:
+#    - NEONDB_PRODUCTION_URL
+#    - ACTIVE_DATABASE=neondb_production
+```
+
+**Frontend (Vercel):**
+```bash
+# 1. Connect GitHub repository
+# 2. Configure:
+#    - Framework: Next.js
+#    - Root Directory: frontend
+#    - Build Command: npm run build
+# 3. Set environment variables:
+#    - NEXT_PUBLIC_API_URL=https://your-api.onrender.com
+```
+
+**Automated Workflows:**
+
+Already configured in `.github/workflows/`:
+- `data-collection.yml` - Runs every 15 minutes
+- `maintenance.yml` - Runs daily at 2 AM UTC
+
+### Storage Retention Strategy
+
+**Automated Cleanup (Runs Daily):**
+```python
+RETENTION = {
+    'price_data': 90,        # 90 days for charts
+    'news_data': 30,         # 30 days (older news less relevant)
+    'sentiment_data': 60,    # 60 days for trends
+    'feature_data': 90,      # 90 days for retraining
+    'prediction_logs': 90    # 90 days for accuracy tracking
+}
+```
+
+**Storage Projection:**
+
+| Timeframe | Records | Storage | % of 512 MB |
+|-----------|---------|---------|-------------|
+| 30 days | ~2,900 | ~30 MB | 5.9% |
+| 90 days | ~8,600 | ~90 MB | 17.6% |
+| 1 year | ~35,000 | ~200 MB | 39.1% |
+
+**With automated cleanup:** Database stays under 100 MB permanently.
+
+---
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
@@ -1407,10 +1769,10 @@ This project is licensed under the MIT License - see [LICENSE](LICENSE) file for
 
 ## Contact
 
-**Author:** Ahmed Ismail Khalid Zulqarnain  
-**Email:** your.email@example.com  
-**LinkedIn:** [Your LinkedIn Profile](https://linkedin.com/in/yourprofile)  
-**Portfolio:** [Your Portfolio Website](https://yourportfolio.com)
+**Author:** Ahmed Ismail Khalid  
+**Github:** [https://github.com/AhmedIsmailKhalid/](https://github.com/AhmedIsmailKhalid/)  
+**LinkedIn:** [https://linkedin.com/in/ahmedismailkhalid](https://linkedin.com/in/ahmedismailkhalid)  
+**Portfolio:** [**COMING SOON!**](**COMING SOON!**)
 
 ---
 

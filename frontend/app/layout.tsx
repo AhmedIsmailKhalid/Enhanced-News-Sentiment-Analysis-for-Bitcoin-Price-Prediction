@@ -7,8 +7,8 @@ import Navigation from "@/components/layout/Navigation";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Bitcoin Sentiment MLOps Dashboard",
-  description: "Production-grade MLOps monitoring for Bitcoin sentiment analysis",
+  title: "Bitcoin Sentiment MLOps",
+  description: "Real-time sentiment analysis and price prediction monitoring",
 };
 
 export default function RootLayout({
@@ -18,11 +18,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={inter.className}>
+      <body className={inter.className} suppressHydrationWarning>
         <div className="min-h-screen bg-gray-50">
           <Header />
           <Navigation />
-          <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <main className="container mx-auto px-4 py-6">
             {children}
           </main>
         </div>

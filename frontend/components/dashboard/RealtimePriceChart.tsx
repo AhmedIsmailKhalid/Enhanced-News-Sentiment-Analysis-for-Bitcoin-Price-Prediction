@@ -1,8 +1,17 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { apiClient } from '@/lib/api';
+import { useEffect, useState, useRef, useCallback } from 'react';
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from 'recharts';
+import { apiClient, getIsUsingGoldenDataset } from '@/lib/api';
+import { saveToCache, loadFromCache, formatCacheAge, isCacheStale } from '@/lib/cache';
 
 interface PricePoint {
   timestamp: string;
@@ -11,57 +20,28 @@ interface PricePoint {
   change_24h: number | null;
 }
 
+interface PriceCacheData {
+  data: PricePoint[];
+  latestPrice: number | null;
+  latestTimestamp: string;
+  timeRange: number;
+}
+
+const CACHE_KEY = 'price_data';
+
 export default function RealtimePriceChart() {
   const [priceData, setPriceData] = useState<PricePoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [latestPrice, setLatestPrice] = useState<number | null>(null);
   const [lastUpdate, setLastUpdate] = useState<string>('');
   const [isUpdating, setIsUpdating] = useState(false);
-  const [timeRange, setTimeRange] = useState<number>(24); // Default 24 hours
+  const [timeRange, setTimeRange] = useState<number>(24);
+  const [isStale, setIsStale] = useState(false);
+  const [cacheAge, setCacheAge] = useState<string | null>(null);
+  const [usingGolden, setUsingGolden] = useState(false);
+
   const previousCountRef = useRef<number>(0);
-
-  useEffect(() => {
-    loadPriceData();
-  }, [timeRange]);
-  
-
-  const loadPriceData = async () => {
-    try {
-      setLoading(true);
-      const response = await apiClient.getRecentPrices('BTC', timeRange, 200); // Increased limit for longer ranges
-      
-      if (response.data && response.data.length > 0) {
-        setPriceData(response.data);
-        setLatestPrice(response.latest_price);
-        setLastUpdate(new Date(response.latest_timestamp || '').toLocaleTimeString());
-        previousCountRef.current = response.count;
-      }
-    } catch (error) {
-      console.error('Failed to load price data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const checkForNewData = async () => {
-  try {
-    const response = await apiClient.getRecentPrices('BTC', timeRange, 200);
-    
-    // Only update if we have NEW data (count increased)
-    if (response.count > previousCountRef.current) {
-      setIsUpdating(true);
-      setPriceData(response.data);
-      setLatestPrice(response.latest_price);
-      setLastUpdate(new Date(response.latest_timestamp || '').toLocaleTimeString());
-      previousCountRef.current = response.count;
-      
-      // Flash update indicator
-      setTimeout(() => setIsUpdating(false), 1000);
-    }
-  } catch (error) {
-    console.error('Failed to check for new data:', error);
-  }
-};
+  const updateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -74,29 +54,128 @@ export default function RealtimePriceChart() {
 
   const formatTimestamp = (timestamp: string) => {
     const date = new Date(timestamp);
-    
-    // Format differently based on time range
+
     if (timeRange <= 24) {
-      // For 1-24 hours: show time only
-      return date.toLocaleTimeString('en-US', { 
-        hour: '2-digit', 
-        minute: '2-digit'
+      return date.toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
       });
     } else if (timeRange <= 168) {
-      // For 2-7 days: show day and time
-      return date.toLocaleDateString('en-US', { 
-        month: 'short', 
+      return date.toLocaleDateString('en-US', {
+        month: 'short',
         day: 'numeric',
-        hour: '2-digit'
+        hour: '2-digit',
       });
     } else {
-      // For 14+ days: show date only
-      return date.toLocaleDateString('en-US', { 
-        month: 'short', 
-        day: 'numeric'
+      return date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
       });
     }
   };
+
+  const loadPriceData = useCallback(async () => {
+    try {
+      // 1) Load from cache first (if available)
+      const cached = loadFromCache<PriceCacheData>(CACHE_KEY);
+
+      if (cached && cached.data.timeRange === timeRange) {
+        setPriceData(cached.data.data);
+        setLatestPrice(cached.data.latestPrice);
+        setLastUpdate(new Date(cached.data.latestTimestamp).toLocaleTimeString());
+
+        const isDataStale = isCacheStale(cached.metadata.cachedAt, 30);
+        setIsStale(isDataStale);
+        setCacheAge(formatCacheAge(cached.metadata.cachedAt));
+
+        setLoading(false);
+      }
+
+      // 2) Fetch fresh data regardless
+      const response = await apiClient.getRecentPrices('BTC', timeRange, 200);
+
+      if (response.data?.length) {
+        setPriceData(response.data);
+        setLatestPrice(response.latest_price);
+        setLastUpdate(new Date(response.latest_timestamp || '').toLocaleTimeString());
+        previousCountRef.current = response.count;
+
+        setIsStale(false);
+        setCacheAge(null);
+        
+        // Check if using golden dataset
+        setUsingGolden(getIsUsingGoldenDataset());
+
+        saveToCache<PriceCacheData>(CACHE_KEY, {
+          data: response.data,
+          latestPrice: response.latest_price,
+          latestTimestamp: response.latest_timestamp || new Date().toISOString(),
+          timeRange,
+        });
+      }
+    } catch (error) {
+      console.error('Failed to load price data:', error);
+      // On error, check golden status
+      setUsingGolden(getIsUsingGoldenDataset());
+    } finally {
+      setLoading(false);
+    }
+  }, [timeRange]);
+
+  const checkForNewData = useCallback(async () => {
+    try {
+      const response = await apiClient.getRecentPrices('BTC', timeRange, 200);
+
+      // Update golden dataset status
+      setUsingGolden(getIsUsingGoldenDataset());
+
+      // Only update if NEW data (count increased)
+      if (response.count > previousCountRef.current) {
+        setIsUpdating(true);
+        setPriceData(response.data);
+        setLatestPrice(response.latest_price);
+        setLastUpdate(new Date(response.latest_timestamp || '').toLocaleTimeString());
+        previousCountRef.current = response.count;
+
+        setIsStale(false);
+        setCacheAge(null);
+
+        saveToCache<PriceCacheData>(CACHE_KEY, {
+          data: response.data,
+          latestPrice: response.latest_price,
+          latestTimestamp: response.latest_timestamp || new Date().toISOString(),
+          timeRange,
+        });
+
+        // Flash update indicator (clear previous timeout if any)
+        if (updateTimeoutRef.current) clearTimeout(updateTimeoutRef.current);
+        updateTimeoutRef.current = setTimeout(() => setIsUpdating(false), 1000);
+      }
+    } catch (error) {
+      console.error('Failed to check for new data:', error);
+      // On error, definitely check golden status
+      setUsingGolden(getIsUsingGoldenDataset());
+    }
+  }, [timeRange]);
+
+  useEffect(() => {
+    loadPriceData();
+  }, [loadPriceData]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      checkForNewData();
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, [checkForNewData]);
+
+  // Cleanup any pending timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (updateTimeoutRef.current) clearTimeout(updateTimeoutRef.current);
+    };
+  }, []);
 
   if (loading) {
     return (
@@ -120,43 +199,66 @@ export default function RealtimePriceChart() {
     );
   }
 
-  ///////////////////////////////////////////
-  
-  // Sample data points based on time range to avoid cluttering X-axis
-  const sampleInterval = Math.ceil(priceData.length / 20); // Show max 20 points on X-axis
-
+  const sampleInterval = Math.ceil(priceData.length / 20);
   const chartData = priceData
-    .filter((_, index) => index % sampleInterval === 0 || index === priceData.length - 1) // Include last point
-    .map(point => ({
-        time: formatTimestamp(point.timestamp),
-        price: point.price,
-        fullTimestamp: point.timestamp,
+    .filter((_, index) => index % sampleInterval === 0 || index === priceData.length - 1)
+    .map((point) => ({
+      time: formatTimestamp(point.timestamp),
+      price: point.price,
+      fullTimestamp: point.timestamp,
     }));
 
   return (
     <div className="bg-white rounded-lg shadow p-6">
+      {/* Stale Data Warning Banner - only show if NOT using golden dataset */}
+      {!usingGolden && isStale && cacheAge && (
+        <div className="mb-4 px-4 py-2 bg-yellow-50 border border-yellow-200 rounded-lg">
+          <div className="flex items-center space-x-2">
+            <span className="text-yellow-600">⚠️</span>
+            <span className="text-sm text-yellow-800">
+              Showing cached data from <strong>{cacheAge}</strong>. Fetching live data...
+            </span>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between mb-4">
         <div>
-            <h3 className="text-lg font-semibold text-gray-900">Bitcoin Price</h3>
-            <div className="flex items-center space-x-3 mt-1">
-            {latestPrice && (
-                <span className="text-2xl font-bold text-gray-900">
-                {formatPrice(latestPrice)}
-                </span>
+          <h3 className="text-lg font-semibold text-gray-900">Bitcoin Price</h3>
+          <div className="flex items-center space-x-3 mt-1">
+            {latestPrice !== null && (
+              <span className="text-2xl font-bold text-gray-900">{formatPrice(latestPrice)}</span>
             )}
-            {isUpdating && (
-                <span className="px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded animate-pulse">
+
+            {/* Sample Data Badge */}
+            {usingGolden && (
+              <span className="px-2 py-1 text-xs font-medium bg-amber-100 text-amber-800 rounded">
+                📊 Sample Data
+              </span>
+            )}
+
+            {/* Live Update Flash */}
+            {isUpdating && !usingGolden && (
+              <span className="px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded animate-pulse">
                 ● Live Update
-                </span>
+              </span>
             )}
-            </div>
+
+            {/* Live Indicator - only show if NOT stale AND NOT updating AND NOT using golden */}
+            {!isStale && !isUpdating && !usingGolden && (
+              <span className="px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded">
+                ● Live
+              </span>
+            )}
+          </div>
         </div>
+
         <div className="flex items-center space-x-4">
-            <select
+          <select
             value={timeRange}
             onChange={(e) => setTimeRange(Number(e.target.value))}
             className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500"
-            >
+          >
             <option value={1}>1 Hour</option>
             <option value={2}>2 Hours</option>
             <option value={6}>6 Hours</option>
@@ -167,47 +269,46 @@ export default function RealtimePriceChart() {
             <option value={720}>30 Days</option>
             <option value={1440}>60 Days</option>
             <option value={2160}>90 Days</option>
-            </select>
-            <div className="text-right">
+          </select>
+
+          <div className="text-right">
             <p className="text-sm text-gray-600">Last Update</p>
             <p className="text-sm font-medium text-gray-900">{lastUpdate}</p>
-            <p className="text-xs text-gray-500 mt-1">
-                {priceData.length} data points
-            </p>
-            </div>
+            <p className="text-xs text-gray-500 mt-1">{priceData.length} data points</p>
+          </div>
         </div>
-        </div>
+      </div>
 
       <ResponsiveContainer width="100%" height={300}>
         <LineChart data={chartData}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-          <XAxis 
-            dataKey="time" 
+          <XAxis
+            dataKey="time"
             stroke="#6b7280"
             style={{ fontSize: '12px' }}
             angle={timeRange > 24 ? -45 : 0}
             textAnchor={timeRange > 24 ? 'end' : 'middle'}
             height={timeRange > 24 ? 80 : 30}
           />
-          <YAxis 
+          <YAxis
             stroke="#6b7280"
             style={{ fontSize: '12px' }}
             tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
           />
-          <Tooltip 
+          <Tooltip
             contentStyle={{
               backgroundColor: 'white',
               border: '1px solid #e5e7eb',
               borderRadius: '8px',
-              padding: '8px'
+              padding: '8px',
             }}
             formatter={(value: number) => [formatPrice(value), 'Price']}
             labelFormatter={(label) => `Time: ${label}`}
           />
-          <Line 
-            type="monotone" 
-            dataKey="price" 
-            stroke="#f59e0b" 
+          <Line
+            type="monotone"
+            dataKey="price"
+            stroke="#f59e0b"
             strokeWidth={2}
             dot={false}
             activeDot={{ r: 6, fill: '#f59e0b' }}
@@ -216,10 +317,18 @@ export default function RealtimePriceChart() {
       </ResponsiveContainer>
 
       <div className="mt-4 flex items-center justify-between text-xs text-gray-500">
-        <span>Auto-updates when new data is collected</span>
+        <span>
+          {usingGolden 
+            ? 'Sample data updates every 30s to demonstrate system' 
+            : 'Auto-updates when new data is collected'}
+        </span>
         <span className="flex items-center space-x-1">
-          <div className="h-2 w-2 bg-green-500 rounded-full animate-pulse"></div>
-          <span>Live</span>
+          <div
+            className={`h-2 w-2 rounded-full ${
+              usingGolden ? 'bg-amber-500' : isStale ? 'bg-yellow-500' : 'bg-green-500 animate-pulse'
+            }`}
+          ></div>
+          <span>{usingGolden ? 'Sample' : isStale ? 'Updating...' : 'Live'}</span>
         </span>
       </div>
     </div>

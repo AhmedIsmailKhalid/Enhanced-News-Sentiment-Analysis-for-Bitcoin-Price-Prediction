@@ -43,20 +43,16 @@ def test_predict_vader():
     """Test prediction with VADER features"""
     response = requests.post(
         f"{BASE_URL}/predict",
-        params={
-            "feature_set": "vader",
-            "model_type": "random_forest",
-            "use_cached_features": True
-        }
+        params={"feature_set": "vader", "model_type": "random_forest", "use_cached_features": True},
     )
     print_response("POST /predict (VADER)", response)
-    
+
     if response.status_code == 200:
         data = response.json()
         if data["success"]:
             print(f"\nPrediction: {data['prediction']['direction'].upper()}")
             # print(f"Confidence: {data['prediction']['confidence']:.2%}")
-            accuracy = data['prediction'].get('accuracy')
+            accuracy = data["prediction"].get("accuracy")
             if accuracy is not None:
                 print(f"Model Accuracy (7d): {accuracy:.2%}")
             else:
@@ -73,17 +69,17 @@ def test_predict_finbert():
         params={
             "feature_set": "finbert",
             "model_type": "random_forest",
-            "use_cached_features": True
-        }
+            "use_cached_features": True,
+        },
     )
     print_response("POST /predict (FinBERT)", response)
-    
+
     if response.status_code == 200:
         data = response.json()
         if data["success"]:
             print(f"\nPrediction: {data['prediction']['direction'].upper()}")
             # print(f"Confidence: {data['prediction']['confidence']:.2%}")
-            accuracy = data['prediction'].get('accuracy')
+            accuracy = data["prediction"].get("accuracy")
             if accuracy is not None:
                 print(f"Model Accuracy (7d): {accuracy:.2%}")
             else:
@@ -95,66 +91,64 @@ def test_predict_both():
     """Test prediction with both models"""
     response = requests.post(f"{BASE_URL}/predict/both")
     print_response("POST /predict/both", response)
-    
+
     if response.status_code == 200:
         data = response.json()
-        
-        if data['vader']['success'] and data['finbert']['success']:
-            print("\nVADER Prediction:", data['vader']['prediction']['direction'].upper())
-            print("FinBERT Prediction:", data['finbert']['prediction']['direction'].upper())
-            print("Agreement:", "YES" if data['agreement'] else "NO")
+
+        if data["vader"]["success"] and data["finbert"]["success"]:
+            print("\nVADER Prediction:", data["vader"]["prediction"]["direction"].upper())
+            print("FinBERT Prediction:", data["finbert"]["prediction"]["direction"].upper())
+            print("Agreement:", "YES" if data["agreement"] else "NO")
 
 
 def test_invalid_feature_set():
     """Test error handling with invalid feature set"""
     try:
         response = requests.post(
-            f"{BASE_URL}/predict",
-            params={
-                "feature_set": "invalid",
-                "model_type": "random_forest"
-            }
+            f"{BASE_URL}/predict", params={"feature_set": "invalid", "model_type": "random_forest"}
         )
-        
+
         print_response("POST /predict (invalid feature_set)", response)
-        
+
         # Accept either 422 (validation) or 500 (server error) as valid error responses
-        assert response.status_code in [422, 500], f"Expected error status, got {response.status_code}"
-        
+        assert response.status_code in [
+            422,
+            500,
+        ], f"Expected error status, got {response.status_code}"
+
         result = response.json()
-        assert 'detail' in result, "Error response should contain 'detail' field"
-        
+        assert "detail" in result, "Error response should contain 'detail' field"
+
         print("Error handling works (returns error status)")
-        
+
     except Exception as e:
         print(f"Test failed: {str(e)}")
         raise
 
 
-
 def main():
-    print("="*60)
+    print("=" * 60)
     print("Bitcoin Prediction API Tests")
-    print("="*60)
-    
+    print("=" * 60)
+
     try:
         # Basic endpoints
         test_root()
         test_health()
         test_list_models()
-        
+
         # Prediction endpoints
         test_predict_vader()
         test_predict_finbert()
         test_predict_both()
-        
+
         # Error handling
         test_invalid_feature_set()
-        
-        print("\n" + "="*60)
+
+        print("\n" + "=" * 60)
         print("All tests passed!")
-        print("="*60)
-        
+        print("=" * 60)
+
     except requests.exceptions.ConnectionError:
         print("\nError: Could not connect to API")
         print("Make sure the API is running: poetry run python scripts/deployment/run_api.py")

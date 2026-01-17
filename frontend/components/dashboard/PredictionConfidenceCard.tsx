@@ -3,10 +3,28 @@
 import { useEffect, useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { apiClient } from '@/lib/api';
+import { saveToCache, loadFromCache, formatCacheAge, isCacheStale } from '@/lib/cache';
+import type { PredictionLog } from '@/lib/types';
+
+interface ChartDataPoint {
+  index: number;
+  vader: number | null;
+  finbert: number | null;
+}
+
+interface ConfidenceCacheData {
+  chartData: ChartDataPoint[];
+  vaderAvg: number;
+  finbertAvg: number;
+}
+
+const CACHE_KEY = 'prediction_confidence';
 
 export default function PredictionConfidenceCard() {
-  const [confidenceData, setConfidenceData] = useState<any>(null);
+  const [confidenceData, setConfidenceData] = useState<ConfidenceCacheData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isStale, setIsStale] = useState(false);
+  const [cacheAge, setCacheAge] = useState<string | null>(null);
 
   useEffect(() => {
     loadConfidenceData();
@@ -18,30 +36,53 @@ export default function PredictionConfidenceCard() {
 
   const loadConfidenceData = async () => {
     try {
-      const response = await apiClient.getRecentPredictions(undefined, 50);
+      // 1. Try to load from cache first
+      const cached = loadFromCache<ConfidenceCacheData>(CACHE_KEY);
+      if (cached) {
+        console.log('Loading confidence data from cache');
+        setConfidenceData(cached.data);
+        
+        const isDataStale = isCacheStale(cached.metadata.cachedAt, 30);
+        setIsStale(isDataStale);
+        setCacheAge(formatCacheAge(cached.metadata.cachedAt));
+        
+        setLoading(false);
+      }
+
+      // 2. Fetch fresh data from API (with golden dataset fallback)
+      const response = await apiClient.getRecentPredictions(undefined, 25);
       
-      if (response.predictions && response.predictions.length > 0) {
-        // Separate VADER and FinBERT predictions
-        const vaderPreds = response.predictions
-          .filter((p: any) => p.feature_set === 'vader')
-          .reverse(); // Oldest first
-        
-        const finbertPreds = response.predictions
-          .filter((p: any) => p.feature_set === 'finbert')
-          .reverse();
-        
-        // Combine for chart
-        const combinedData = combineConfidenceData(vaderPreds, finbertPreds);
-        
+      if (response && response.predictions && response.predictions.length > 0) {
+        const chartData: ChartDataPoint[] = response.predictions.map((pred: PredictionLog, index: number) => ({
+          index: index + 1,
+          vader: pred.feature_set === 'vader' ? (pred.confidence * 100) : null,
+          finbert: pred.feature_set === 'finbert' ? (pred.confidence * 100) : null,
+        }));
+
         // Calculate averages
-        const vaderAvg = vaderPreds.reduce((sum: number, p: any) => sum + p.confidence, 0) / vaderPreds.length;
-        const finbertAvg = finbertPreds.reduce((sum: number, p: any) => sum + p.confidence, 0) / finbertPreds.length;
+        const vaderPreds = response.predictions.filter((p: PredictionLog) => p.feature_set === 'vader');
+        const finbertPreds = response.predictions.filter((p: PredictionLog) => p.feature_set === 'finbert');
         
-        setConfidenceData({
-          chartData: combinedData,
+        const vaderAvg = vaderPreds.length > 0
+          ? vaderPreds.reduce((sum: number, p: PredictionLog) => sum + p.confidence, 0) / vaderPreds.length * 100
+          : 0;
+        
+        const finbertAvg = finbertPreds.length > 0
+          ? finbertPreds.reduce((sum: number, p: PredictionLog) => sum + p.confidence, 0) / finbertPreds.length * 100
+          : 0;
+
+        const newData: ConfidenceCacheData = {
+          chartData,
           vaderAvg,
           finbertAvg,
-        });
+        };
+
+        setConfidenceData(newData);
+        setIsStale(false);
+        setCacheAge(null);
+
+        // Save to cache
+        saveToCache<ConfidenceCacheData>(CACHE_KEY, newData);
       }
     } catch (error) {
       console.error('Failed to load confidence data:', error);
@@ -50,32 +91,11 @@ export default function PredictionConfidenceCard() {
     }
   };
 
-  const combineConfidenceData = (vaderPreds: any[], finbertPreds: any[]) => {
-    const combined = [];
-    const maxLength = Math.max(vaderPreds.length, finbertPreds.length);
-    
-    for (let i = 0; i < maxLength; i++) {
-      const entry: any = { index: i + 1 };
-      
-      if (vaderPreds[i]) {
-        entry.vader = (vaderPreds[i].confidence * 100);
-      }
-      
-      if (finbertPreds[i]) {
-        entry.finbert = (finbertPreds[i].confidence * 100);
-      }
-      
-      combined.push(entry);
-    }
-    
-    return combined;
-  };
-
-  if (loading) {
+  if (loading && !confidenceData) {
     return (
       <div className="bg-white rounded-lg shadow p-6">
         <div className="animate-pulse">
-          <div className="h-6 bg-gray-200 rounded w-1/3 mb-4"></div>
+          <div className="h-6 bg-gray-200 rounded w-2/3 mb-4"></div>
           <div className="h-64 bg-gray-200 rounded"></div>
         </div>
       </div>
@@ -85,9 +105,11 @@ export default function PredictionConfidenceCard() {
   if (!confidenceData || confidenceData.chartData.length === 0) {
     return (
       <div className="bg-white rounded-lg shadow p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Prediction Confidence</h3>
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">
+          Prediction Confidence (Recent)
+        </h3>
         <div className="flex items-center justify-center h-64 text-gray-500">
-          <p>No prediction data available yet</p>
+          <p>No prediction data available</p>
         </div>
       </div>
     );
@@ -95,49 +117,78 @@ export default function PredictionConfidenceCard() {
 
   return (
     <div className="bg-white rounded-lg shadow p-6">
-      <h3 className="text-lg font-semibold text-gray-900 mb-4">Prediction Confidence (Recent)</h3>
-      
-      {/* Average Confidence */}
-      <div className="grid grid-cols-2 gap-4 mb-4">
-        <div>
-          <p className="text-sm text-gray-600">VADER Avg</p>
-          <p className="text-2xl font-bold text-cyan-600">
-            {(confidenceData.vaderAvg * 100).toFixed(1)}%
-          </p>
-          <p className="text-xs text-gray-500">Last {confidenceData.chartData.filter((d: any) => d.vader).length} predictions</p>
+      {/* Stale Data Warning Banner */}
+      {isStale && cacheAge && (
+        <div className="mb-4 px-4 py-2 bg-yellow-50 border border-yellow-200 rounded-lg">
+          <div className="flex items-center space-x-2">
+            <span className="text-yellow-600">⚠️</span>
+            <span className="text-sm text-yellow-800">
+              Showing cached data from <strong>{cacheAge}</strong>. Fetching live data...
+            </span>
+          </div>
         </div>
-        <div>
-          <p className="text-sm text-gray-600">FinBERT Avg</p>
-          <p className="text-2xl font-bold text-rose-600">
-            {(confidenceData.finbertAvg * 100).toFixed(1)}%
+      )}
+
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-semibold text-gray-900">
+          Prediction Confidence (Recent)
+        </h3>
+        {!isStale && (
+          <span className="px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded">
+            ● Live
+          </span>
+        )}
+      </div>
+
+      <div className="grid grid-cols-2 gap-4 mb-6">
+        <div className="text-center p-4 bg-cyan-50 rounded-lg">
+          <p className="text-sm text-gray-600">VADER Avg</p>
+          <p className="text-3xl font-bold text-cyan-600">
+            {confidenceData.vaderAvg ? confidenceData.vaderAvg.toFixed(1) : '0.0'}%
           </p>
-          <p className="text-xs text-gray-500">Last {confidenceData.chartData.filter((d: any) => d.finbert).length} predictions</p>
+          <p className="text-xs text-gray-500 mt-1">
+            Last {confidenceData.chartData.filter((d: ChartDataPoint) => d.vader !== null).length} predictions
+          </p>
+        </div>
+
+        <div className="text-center p-4 bg-rose-50 rounded-lg">
+          <p className="text-sm text-gray-600">FinBERT Avg</p>
+          <p className="text-3xl font-bold text-rose-600">
+            {confidenceData.finbertAvg ? confidenceData.finbertAvg.toFixed(1) : '0.0'}%
+          </p>
+          <p className="text-xs text-gray-500 mt-1">
+            Last {confidenceData.chartData.filter((d: ChartDataPoint) => d.finbert !== null).length} predictions
+          </p>
         </div>
       </div>
 
-      {/* Chart */}
-      <ResponsiveContainer width="100%" height={250}>
+      <ResponsiveContainer width="100%" height={240}>
         <LineChart data={confidenceData.chartData}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
           <XAxis 
             dataKey="index" 
+            label={{ value: 'Prediction #', position: 'insideBottom', offset: -5 }}
             stroke="#6b7280"
             style={{ fontSize: '12px' }}
-            label={{ value: 'Prediction #', position: 'insideBottom', offset: -5 }}
           />
           <YAxis 
+            label={{ value: 'Confidence (%)', angle: -90, position: 'insideLeft' }}
+            domain={[0, 100]}
             stroke="#6b7280"
             style={{ fontSize: '12px' }}
-            domain={[0, 100]}
-            tickFormatter={(value) => `${value}%`}
           />
           <Tooltip 
             contentStyle={{
               backgroundColor: 'white',
               border: '1px solid #e5e7eb',
               borderRadius: '8px',
+              padding: '8px'
             }}
-            formatter={(value: number) => [`${value.toFixed(1)}%`, '']}
+            formatter={(value: unknown) => {
+              const numValue = value as number | null;
+              if (numValue === null || numValue === undefined) return ['N/A', ''];
+              return [`${numValue.toFixed(1)}%`, ''];
+            }}
           />
           <Legend />
           <Line 
@@ -146,8 +197,8 @@ export default function PredictionConfidenceCard() {
             stroke="#06b6d4" 
             strokeWidth={2}
             name="VADER"
-            dot={{ r: 3 }}
             connectNulls
+            dot={{ r: 3 }}
           />
           <Line 
             type="monotone" 
@@ -155,8 +206,8 @@ export default function PredictionConfidenceCard() {
             stroke="#f43f5e" 
             strokeWidth={2}
             name="FinBERT"
-            dot={{ r: 3 }}
             connectNulls
+            dot={{ r: 3 }}
           />
         </LineChart>
       </ResponsiveContainer>

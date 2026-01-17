@@ -2,12 +2,21 @@
 
 import { useState, useEffect } from 'react';
 import { apiClient } from '@/lib/api';
+import { saveToCache, loadFromCache, formatCacheAge, isCacheStale } from '@/lib/cache';
 import type { PredictionLog } from '@/lib/types';
+
+interface PredictionsCacheData {
+  predictions: PredictionLog[];
+}
+
+const CACHE_KEY = 'recent_predictions';
 
 export default function PredictionTable() {
   const [predictions, setPredictions] = useState<PredictionLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isStale, setIsStale] = useState(false);
+  const [cacheAge, setCacheAge] = useState<string | null>(null);
 
   useEffect(() => {
     loadPredictions();
@@ -22,10 +31,30 @@ export default function PredictionTable() {
 
   const loadPredictions = async () => {
     try {
-      setLoading(true);
+      // 1. Try to load from cache first
+      const cached = loadFromCache<PredictionsCacheData>(CACHE_KEY);
+      if (cached) {
+        console.log('Loading predictions from cache');
+        setPredictions(cached.data.predictions);
+        
+        const isDataStale = isCacheStale(cached.metadata.cachedAt, 30);
+        setIsStale(isDataStale);
+        setCacheAge(formatCacheAge(cached.metadata.cachedAt));
+        
+        setLoading(false);
+      }
+
+      // 2. Fetch fresh data from API
       const response = await apiClient.getRecentPredictions(undefined, 10);
       setPredictions(response.predictions || []);
       setError(null);
+      setIsStale(false);
+      setCacheAge(null);
+
+      // Save to cache
+      saveToCache<PredictionsCacheData>(CACHE_KEY, {
+        predictions: response.predictions || [],
+      });
     } catch (err) {
       setError('Failed to load predictions');
       console.error(err);
@@ -65,20 +94,31 @@ export default function PredictionTable() {
       <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
         <h3 className="text-lg font-semibold text-gray-900">Recent Predictions</h3>
         <div className="flex items-center space-x-3">
+          {isStale && cacheAge && (
+            <span className="text-xs text-yellow-600">
+              Cached: {cacheAge}
+            </span>
+          )}
+          {!isStale && (
+            <span className="text-xs text-green-600 flex items-center">
+              <div className="h-2 w-2 bg-green-500 rounded-full animate-pulse mr-1"></div>
+              Live
+            </span>
+          )}
           <span className="text-xs text-gray-500">Auto-refresh: 30s</span>
           <button
             onClick={loadPredictions}
             disabled={loading}
             className="text-sm text-cyan-600 hover:text-cyan-700 font-medium disabled:opacity-50"
           >
-            {loading ? 'Refreshing...' : 'Refresh Now'}
+            {loading ? '...' : 'Refresh'}
           </button>
         </div>
       </div>
-      
+
       {error && (
-        <div className="px-6 py-4 bg-red-50 border-b border-red-200">
-          <p className="text-sm text-red-600">{error}</p>
+        <div className="px-6 py-4 bg-red-50 text-red-600 text-sm">
+          {error}
         </div>
       )}
 
@@ -87,7 +127,7 @@ export default function PredictionTable() {
           <thead className="bg-gray-50">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Timestamp
+                Time
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Model
@@ -99,55 +139,69 @@ export default function PredictionTable() {
                 Confidence
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Outcome
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Response
               </th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {predictions.length === 0 ? (
-              <tr>
-                <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
-                  No predictions yet
+            {predictions.map((prediction) => (
+              <tr key={prediction.id} className="hover:bg-gray-50">
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  {formatTimestamp(prediction.predicted_at)}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                    prediction.feature_set === 'vader' 
+                      ? 'bg-cyan-100 text-cyan-800' 
+                      : 'bg-rose-100 text-rose-800'
+                  }`}>
+                    {prediction.feature_set.toUpperCase()}
+                  </span>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <span className={`inline-flex items-center text-sm font-medium ${
+                    prediction.prediction === 1 
+                      ? 'text-green-600' 
+                      : 'text-red-600'
+                  }`}>
+                    {prediction.prediction === 1 ? '↑ UP' : '↓ DOWN'}
+                  </span>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  {(prediction.confidence * 100).toFixed(1)}%
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  {prediction.actual_direction === null ? (
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                      Pending
+                    </span>
+                  ) : prediction.actual_direction === prediction.prediction ? (
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                      ✓ Correct
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                      ✗ Wrong
+                    </span>
+                  )}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  {prediction.response_time_ms ? `${prediction.response_time_ms}ms` : 'N/A'}
                 </td>
               </tr>
-            ) : (
-              predictions.map((pred) => (
-                <tr key={pred.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {formatTimestamp(pred.predicted_at)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span
-                      className={`px-2 py-1 text-xs font-medium rounded ${
-                        pred.feature_set === 'vader'
-                          ? 'bg-cyan-100 text-cyan-800'
-                          : 'bg-rose-100 text-rose-800'
-                      }`}
-                    >
-                      {pred.feature_set.toUpperCase()}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span
-                      className={`font-medium ${
-                        pred.prediction === 1 ? 'text-green-600' : 'text-red-600'
-                      }`}
-                    >
-                      {pred.prediction === 1 ? '↑ UP' : '↓ DOWN'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {(pred.confidence * 100).toFixed(1)}%
-                  </td>                  
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {pred.response_time_ms.toFixed(0)}ms
-                  </td>
-                </tr>
-              ))
-            )}
+            ))}
           </tbody>
         </table>
       </div>
+
+      {predictions.length === 0 && !loading && (
+        <div className="px-6 py-12 text-center text-gray-500">
+          No predictions available yet
+        </div>
+      )}
     </div>
   );
 }

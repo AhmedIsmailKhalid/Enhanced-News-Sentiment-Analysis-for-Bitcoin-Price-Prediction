@@ -2,6 +2,7 @@ name: Data Collection & Sentiment Processing
 
 on:
   schedule:
+    # Run every 15 minutes
     - cron: '*/15 * * * *'
   workflow_dispatch:
 
@@ -29,16 +30,6 @@ jobs:
         with:
           python-version: '3.11'
       
-      # - name: Cache Poetry dependencies
-      #   uses: actions/cache@v3
-      #   with:
-      #     path: |
-      #       ~/.cache/pypoetry
-      #       ~/.cache/pip
-      #     key: ${{ runner.os }}-poetry-${{ hashFiles('**/poetry.lock') }}
-      #     restore-keys: |
-      #       ${{ runner.os }}-poetry-
-      
       - name: Install Poetry
         run: |
           curl -sSL https://install.python-poetry.org | python3 -
@@ -53,11 +44,13 @@ jobs:
           NEONDB_BACKUP_URL: ${{ secrets.NEONDB_BACKUP_URL }}
           COINGECKO_API_URL: https://api.coingecko.com/api/v3
           MAX_ARTICLES_PER_SOURCE: 500
+          ACTIVE_DATABASE: neondb_production
         run: poetry run python scripts/data_collection/collect_and_process_neondb.py
 
       - name: Generate Predictions
         env:
           NEONDB_PRODUCTION_URL: ${{ secrets.NEONDB_PRODUCTION_URL }}
+          ACTIVE_DATABASE: neondb_production
         run: |
           poetry run python scripts/deployment/generate_predictions.py \
             --mode recent \
@@ -68,10 +61,15 @@ jobs:
       - name: Update Prediction Outcomes
         env:
           NEONDB_PRODUCTION_URL: ${{ secrets.NEONDB_PRODUCTION_URL }}
+          ACTIVE_DATABASE: neondb_production
         run: |
           poetry run python scripts/deployment/update_prediction_outcomes.py \
             --db neondb_production
       
       - name: Report status
         if: failure()
-        run: echo "Data collection or sentiment processing failed"
+        run: echo "❌ Data collection or sentiment processing failed"
+      
+      - name: Report success
+        if: success()
+        run: echo "✅ Data collection completed successfully"

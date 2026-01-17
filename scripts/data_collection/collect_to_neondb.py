@@ -16,28 +16,28 @@ from src.shared.logging import setup_logging
 
 def main():
     setup_logging(log_level="INFO")
-    
-    print("="*60)
+
+    print("=" * 60)
     print("NeonDB Production Data Collection")
-    print("="*60)
-    
+    print("=" * 60)
+
     results = {}
-    
+
     # Collect to NeonDB Production
     print("\n→ Collecting Price Data to NeonDB...")
     price_collector = PriceCollector(target_db="neondb_production")
-    results['price'] = price_collector.run_collection()
-    
+    results["price"] = price_collector.run_collection()
+
     print("\n→ Collecting News Data to NeonDB...")
     news_collector = NewsCollector(target_db="neondb_production")
-    results['news'] = news_collector.run_collection()
-    
+    results["news"] = news_collector.run_collection()
+
     # Summary
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     successful = sum(1 for v in results.values() if v)
     print(f"NeonDB Collection: {successful}/{len(results)} successful")
-    print("="*60)
-    
+    print("=" * 60)
+
     return 0 if all(results.values()) else 1
 
 

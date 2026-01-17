@@ -23,20 +23,22 @@ def create_tables() -> bool:
     print("=" * 60)
     print("Creating Database Tables")
     print("=" * 60)
-    
+
     try:
         print("\n→ Creating tables...")
         Base.metadata.create_all(bind=engine)
         print("✓ Tables created successfully")
-        
+
         # Verify tables exist
         with engine.connect() as conn:
-            result = conn.execute(text(
-                "SELECT table_name FROM information_schema.tables "
-                "WHERE table_schema='public' ORDER BY table_name"
-            ))
+            result = conn.execute(
+                text(
+                    "SELECT table_name FROM information_schema.tables "
+                    "WHERE table_schema='public' ORDER BY table_name"
+                )
+            )
             tables = [row[0] for row in result]
-            
+
             if tables:
                 print(f"\n✓ Created {len(tables)} tables:")
                 for table in tables:
@@ -44,15 +46,16 @@ def create_tables() -> bool:
             else:
                 print("\n✗ No tables found after creation")
                 return False
-        
+
         print("\n" + "=" * 60)
         print("✓ Database setup completed successfully!")
         print("=" * 60)
         return True
-        
+
     except Exception as e:
         print(f"\n✗ Failed to create tables: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
