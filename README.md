@@ -49,7 +49,9 @@ Predict Bitcoin 1-hour price direction (UP/DOWN) using sentiment analysis from f
 - **Multiple ML Algorithms:** XGBoost, Random Forest, Gradient Boosting, LightGBM, Logistic Regression
 - **Complete MLOps Infrastructure:** Automated collection → Processing → Training → Serving → Monitoring → Retraining
 
-[![Architectural Diagram](assets/Architectural-Diagram.png)](assets/Architectural-Diagram.png)
+<a href="assets/Architectural-Diagram.png">
+  <img src="assets/Architectural-Diagram.png" alt="MLOps Pipeline Flow Diagram" width="100%">
+</a>
 
 ---
 
@@ -89,6 +91,7 @@ Predict Bitcoin 1-hour price direction (UP/DOWN) using sentiment analysis from f
 ### MLOps Pipeline Flow
 
 [![MLOps Pipeline Flow Diagram](assets/MLOps-Pipeline-Flow.png)](assets/MLOps-Pipeline-Flow.png)
+
 
 
 ### Full MLOps Stack
