@@ -13,17 +13,17 @@
 
 ## Table of Contents
 
-1. [Project Overview](#-project-overview)
-2. [Key Innovations](#-key-innovations)
-3. [Architecture](#%EF%B8%8F-architecture)
-4. [Technology Stack](#-technology-stack)
-5. [System Components](#-system-components)
-6. [MLOps Pipeline](#-mlops-pipeline)
-7. [Getting Started](#-getting-started)
-8. [API Documentation](#-api-documentation)
-9. [Performance & Results](#-performance--results)
-10. [Challenges & Solutions](#-challenges--solutions)
-11. [Future Enhancements](#-future-enhancements)
+1. [Project Overview](#project-overview)
+2. [Key Innovations](#key-innovations)
+3. [Architecture](#architecture)
+4. [Technology Stack](#technology-stack)
+5. [System Components](#system-components)
+6. [MLOps Pipeline](#mlops-pipeline)
+7. [Getting Started](#getting-started)
+8. [API Documentation](#api-documentation)
+9. [Performance & Results](#performance--results)
+10. [Challenges & Solutions](#challenges--solutions)
+11. [Future Enhancements](#future-enhancements)
 
 ---
 
@@ -49,7 +49,7 @@ Predict Bitcoin 1-hour price direction (UP/DOWN) using sentiment analysis from f
 - **Multiple ML Algorithms:** XGBoost, Random Forest, Gradient Boosting, LightGBM, Logistic Regression
 - **Complete MLOps Infrastructure:** Automated collection → Processing → Training → Serving → Monitoring → Retraining
 
-![Architectural Diagram](assets/Diagram.png)
+[![Architectural Diagram](assets/Architectural-Diagram.png)](assets/Architectural-Diagram.png)
 
 ---
 
@@ -88,129 +88,13 @@ Predict Bitcoin 1-hour price direction (UP/DOWN) using sentiment analysis from f
 
 ### MLOps Pipeline Flow
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         ORCHESTRATION LAYER                             │
-│                    GitHub Actions (15-min schedule)                     │
-└─────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ↓
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         DATA COLLECTION                                 │
-├─────────────────────────────────────────────────────────────────────────┤
-│  CoinGecko API  →  Bitcoin Price Data                                   │
-│  RSS Feeds      →  News Articles (Reuters, Bloomberg, CoinDesk, etc.)   │
-└─────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ↓
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    FEATURE ENGINEERING LAYER                            │
-├─────────────────────────────────────────────────────────────────────────┤
-│  VADER Processing       →  13 VADER Features                            │
-│  FinBERT Processing     →  13 FinBERT Features                          │
-│  Price Features         →  Returns, Volatility, Moving Averages         │
-│  Temporal Features      →  Hour, Day of Week                            │
-└─────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ↓
-┌─────────────────────────────────────────────────────────────────────────┐
-│                        STORAGE LAYER                                    │
-│                   PostgreSQL (NeonDB Production)                        │
-├─────────────────────────────────────────────────────────────────────────┤
-│  • Raw Data (prices, articles)                                          │
-│  • Processed Sentiment                                                  │
-│  • Feature Store (VADER & FinBERT)                                      │
-│  • Prediction Logs                                                      │
-│  • Model Metadata                                                       │
-└─────────────────────────────────────────────────────────────────────────┘
-                                    │
-                    ┌───────────────┴───────────────┐
-                    ↓                               ↓
-         ┌──────────────────────┐      ┌──────────────────────┐
-         │   TRAINING FLOW      │      │   INFERENCE FLOW     │
-         │    (Weekly/OnDemand) │      │   (Every 15 min)     │
-         └──────────────────────┘      └──────────────────────┘
-                    │                               │
-                    ↓                               ↓
-         ┌──────────────────────┐      ┌──────────────────────┐
-         │  Model Training      │      │  Prediction Gen      │
-         │  • XGBoost           │      │  • Load Models       │
-         │  • Random Forest     │      │  • Feature Serving   │
-         │  • Gradient Boost    │      │  • Generate Preds    │
-         │  • LightGBM          │      │  • Log Results       │
-         └──────────────────────┘      └──────────────────────┘
-                    │                               │
-                    ↓                               ↓
-         ┌──────────────────────┐      ┌──────────────────────┐
-         │  Model Versioning    │      │  Outcome Evaluation  │
-         │  • Git-based         │      │  • 1hr delay check   │
-         │  • Metadata tracking │      │  • Accuracy tracking │
-         └──────────────────────┘      └──────────────────────┘
-                    │                               │
-                    └───────────────┬───────────────┘
-                                    ↓
-                    ┌───────────────────────────────┐
-                    │     MONITORING LAYER          │
-                    ├───────────────────────────────┤
-                    │  • Drift Detection (PSI)      │
-                    │  • Performance Metrics        │
-                    │  • Automated Retraining       │
-                    └───────────────────────────────┘
-                                    │
-                                    ↓
-                    ┌───────────────────────────────┐
-                    │     DEPLOYMENT LAYER          │
-                    ├───────────────────────────────┤
-                    │  FastAPI (Render)             │
-                    │  React Dashboard (Vercel)     │
-                    └───────────────────────────────┘
-```
+[![MLOps Pipeline Flow Diagram](assets/MLOps-Pipeline-Flow.png)](assets/MLOps-Pipeline-Flow.png)
+
 
 ### Full MLOps Stack
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                            MONITORING                                   │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  Production Data  →  Model Monitoring  →  Drift Detection (PSI)         │
-│       (CSV)              (Custom)           • Feature Distribution      │
-│                                              • Performance Tracking     │
-│                                              • Alerts & Triggers        │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
-                                    ↑
-                                    │
-                    ┌───────────────┴───────────────┐
-                    │                               │
-┌─────────────────────────────────┐   ┌─────────────────────────────────┐
-│          TRAINING               │   │         DEPLOYMENT              │
-├─────────────────────────────────┤   ├─────────────────────────────────┤
-│                                 │   │                                 │
-│  Training Data (NeonDB)         │   │  Service (API Endpoint)         │
-│         ↓                       │   │         ↑                       │
-│  Model Training                 │   │  ┌─────────────────────┐        │
-│  • Python (sklearn)             │   │  │  Docker Container   │        │
-│  • XGBoost, LightGBM            │   │  │  ┌───────────────┐ │         │
-│  • Random Forest                │   │  │  │   FastAPI     │ │         │
-│  • Gradient Boosting            │   │  │  │   + uvicorn   │ │         │
-│         ↓                       │   │  │  └───────────────┘ │         │
-│  Model Tracking                 │   │  │  Model API Endpoint│         │
-│  • Git Versioning               │   │  └─────────────────────┘        │
-│  • Metadata (JSON)              │   │         ↓                       │
-│  • Performance Metrics          │   │  Deployment (Render)            │
-│         ↓                       │   │  • Container-based              │
-│  Model Registry                 │   │  • Auto-scaling                 │
-│  • models/saved_models/         │   │  • Health monitoring            │
-│  • VADER & FinBERT splits       │   │                                 │
-│         ↓                       │   │         ↑                       │
-│  Remote Storage (GitHub)        │   │  Frontend (Vercel)              │
-│  • Version control              │   │  • Next.js 14                   │
-│  • Model artifacts (.pkl)       │   │  • TypeScript + Tailwind        │
-│  • Feature metadata             │   │  • Recharts visualization       │
-│                                 │   │                                 │
-└─────────────────────────────────┘   └─────────────────────────────────┘
-```
+[![Full MLOps Stack Diagram](assets/Full-MLOps-Stack.png)](assets/Full-MLOps-Stack.png)
+
 
 **Key Infrastructure Components:**
 - **Training:** Offline model development with version control
