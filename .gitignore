@@ -98,7 +98,7 @@ Thumbs.db
 *.backup
 
 # Architecture Diagram XML
-assets/Bitcoin_Architecture_diagram.drawio
+*.drawio
 
 # Versions
 Versions
