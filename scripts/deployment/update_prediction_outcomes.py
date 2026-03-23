@@ -257,4 +257,4 @@ if __name__ == "__main__":
 
     update_all_pending_outcomes(hours_threshold=1)
 
-    logger.info("\nPrediction Outcome Updater Completed")   
+    logger.info("\nPrediction Outcome Updater Completed")
