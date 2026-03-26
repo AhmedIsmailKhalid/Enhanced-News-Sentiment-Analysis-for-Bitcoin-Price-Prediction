@@ -1,7 +1,24 @@
-import type { PredictionResponse } from '@/lib/types';
+interface PredictionResult {
+  prediction: {
+    direction: 'up' | 'down';
+    confidence: number;
+    probability: {
+      up: number;
+      down: number;
+    };
+  };
+  model_info?: {
+    model_version: string;
+    features_used: number;
+  };
+  performance?: {
+    response_time_ms: number;
+    cached_features: boolean;
+  };
+}
 
 interface ModelCardProps {
-  prediction: PredictionResponse;
+  prediction: PredictionResult;
   modelName: string;
   modelColor: 'cyan' | 'rose';
   modelType: string;

@@ -12,9 +12,12 @@ import { saveToCache, loadFromCache, formatCacheAge, isCacheStale } from '@/lib/
 interface StatisticsCacheData {
   total_predictions: number;
   predictions_with_outcomes: number;
-  vader_accuracy: number;
-  finbert_accuracy: number;
-  avg_response_time_ms: number;
+  correct_predictions: number;
+  overall_accuracy: number | null;
+  vader_predictions: number;
+  finbert_predictions: number;
+  avg_response_time_ms: number | null;
+  pending_outcomes: number;
 }
 
 const CACHE_KEY = 'statistics';
@@ -151,7 +154,7 @@ export default function OverviewPage() {
               <div>
                 <p className="text-sm text-gray-600">VADER Accuracy</p>
                 <p className="text-3xl font-bold text-cyan-600 mt-2">
-                  {statistics.vader_accuracy ? statistics.vader_accuracy.toFixed(1) : '0.0'}%
+                  {statistics.overall_accuracy ? (statistics.overall_accuracy * 100).toFixed(1) : '0.0'}%
                 </p>
                 <p className="text-xs text-gray-500 mt-1">
                   Random Forest model
@@ -171,7 +174,7 @@ export default function OverviewPage() {
               <div>
                 <p className="text-sm text-gray-600">FinBERT Accuracy</p>
                 <p className="text-3xl font-bold text-rose-600 mt-2">
-                  {statistics.finbert_accuracy ? statistics.finbert_accuracy.toFixed(1) : '0.0'}%
+                  {statistics.overall_accuracy ? (statistics.overall_accuracy * 100).toFixed(1) : '0.0'}%
                 </p>
                 <p className="text-xs text-gray-500 mt-1">
                   Random Forest model

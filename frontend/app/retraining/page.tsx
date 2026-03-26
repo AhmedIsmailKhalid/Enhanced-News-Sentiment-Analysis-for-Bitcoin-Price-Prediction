@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -61,7 +63,7 @@ export default function RetrainingPage() {
       setRetraining((prev) => ({ ...prev, [featureSet]: true }));
       setRetrainingResult((prev) => ({ ...prev, [featureSet]: null }));
 
-      const result = await apiClient.executeRetraining(featureSet, 'random_forest', false);
+      const result = await apiClient.executeRetraining(featureSet, 'random_forest');
       setRetrainingResult((prev) => ({ ...prev, [featureSet]: result }));
 
       // Refresh status after retraining

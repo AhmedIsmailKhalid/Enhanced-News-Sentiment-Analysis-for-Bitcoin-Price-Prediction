@@ -52,7 +52,7 @@ export default function HealthPage() {
           loaded_models: healthResp.loaded_models || 0,
           timestamp: healthResp.timestamp,
         },
-        statistics: statsResp.statistics,
+        statistics: statsResp
       });
 
       // Simulate recent activity (in production, this would come from API)
@@ -330,7 +330,7 @@ export default function HealthPage() {
                   try {
                     await test.fn();
                     results.push({ endpoint: test.name, status: '✓ OK' });
-                  } catch (error) {
+                  } catch (_error) {
                     results.push({ endpoint: test.name, status: '✗ Failed' });
                   }
                 }
@@ -341,7 +341,7 @@ export default function HealthPage() {
                 const message = results.map(r => `${r.endpoint}: ${r.status}`).join('\n');
                 alert(`Endpoint Test Results (${passed}/${total} passed):\n\n${message}`);
                 
-              } catch (error) {
+              } catch (_error) {
                 alert('Failed to run endpoint tests');
               }
             }}

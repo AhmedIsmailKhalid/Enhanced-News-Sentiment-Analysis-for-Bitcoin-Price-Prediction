@@ -107,9 +107,12 @@ export interface PredictionsResponse {
 export interface StatisticsResponse {
   total_predictions: number;
   predictions_with_outcomes: number;
-  vader_accuracy: number;
-  finbert_accuracy: number;
-  avg_response_time_ms: number;
+  correct_predictions: number;
+  overall_accuracy: number | null;
+  vader_predictions: number;
+  finbert_predictions: number;
+  avg_response_time_ms: number | null;
+  pending_outcomes: number;
 }
 
 export interface DualPredictionResponse {
