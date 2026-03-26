@@ -100,9 +100,9 @@ export default function SentimentScoreCard() {
       if (cached) {
         setSentimentData(cached.data);
 
-        const dataIsStale = isCacheStale(cached.metadata.cachedAt, 30);
+        const dataIsStale = isCacheStale(cached, 30 * 60 * 1000);
         setIsStale(dataIsStale);
-        setCacheAge(formatCacheAge(cached.metadata.cachedAt));
+        setCacheAge(formatCacheAge(cached));
 
         setLoading(false);
       }
@@ -258,3 +258,4 @@ export default function SentimentScoreCard() {
     </div>
   );
 }
+

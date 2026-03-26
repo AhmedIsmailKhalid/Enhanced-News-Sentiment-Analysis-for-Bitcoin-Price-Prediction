@@ -39,9 +39,9 @@ export default function PredictionAccuracyCard() {
         console.log('Loading accuracy data from cache');
         setAccuracyData(cached.data);
         
-        const isDataStale = isCacheStale(cached.metadata.cachedAt, 60);
+        const isDataStale = isCacheStale(cached, 60 * 60 * 1000);
         setIsStale(isDataStale);
-        setCacheAge(formatCacheAge(cached.metadata.cachedAt));
+        setCacheAge(formatCacheAge(cached));
         
         setLoading(false);
       }

@@ -84,9 +84,9 @@ export default function RealtimePriceChart() {
         setLatestPrice(cached.data.latestPrice);
         setLastUpdate(new Date(cached.data.latestTimestamp).toLocaleTimeString());
 
-        const isDataStale = isCacheStale(cached.metadata.cachedAt, 30);
+        const isDataStale = isCacheStale(cached, 30 * 60 * 1000);
         setIsStale(isDataStale);
-        setCacheAge(formatCacheAge(cached.metadata.cachedAt));
+        setCacheAge(formatCacheAge(cached));
 
         setLoading(false);
       }

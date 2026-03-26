@@ -42,9 +42,9 @@ export default function PredictionConfidenceCard() {
         console.log('Loading confidence data from cache');
         setConfidenceData(cached.data);
         
-        const isDataStale = isCacheStale(cached.metadata.cachedAt, 30);
+        const isDataStale = isCacheStale(cached, 30 * 60 * 1000);
         setIsStale(isDataStale);
-        setCacheAge(formatCacheAge(cached.metadata.cachedAt));
+        setCacheAge(formatCacheAge(cached));
         
         setLoading(false);
       }

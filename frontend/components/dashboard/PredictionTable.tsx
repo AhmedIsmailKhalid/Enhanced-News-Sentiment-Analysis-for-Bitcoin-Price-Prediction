@@ -37,9 +37,9 @@ export default function PredictionTable() {
         console.log('Loading predictions from cache');
         setPredictions(cached.data.predictions);
         
-        const isDataStale = isCacheStale(cached.metadata.cachedAt, 30);
+        const isDataStale = isCacheStale(cached, 30 * 60 * 1000);
         setIsStale(isDataStale);
-        setCacheAge(formatCacheAge(cached.metadata.cachedAt));
+        setCacheAge(formatCacheAge(cached));
         
         setLoading(false);
       }
