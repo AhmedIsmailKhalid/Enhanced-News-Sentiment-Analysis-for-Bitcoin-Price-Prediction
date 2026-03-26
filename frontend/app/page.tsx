@@ -45,9 +45,9 @@ export default function OverviewPage() {
         console.log('Loading statistics from cache');
         setStatistics(cached.data);
         
-        const isDataStale = isCacheStale(cached.metadata.cachedAt, 30);
+        const isDataStale = isCacheStale(cached, 30 * 60 * 1000);
         setIsStale(isDataStale);
-        setCacheAge(formatCacheAge(cached.metadata.cachedAt));
+        setCacheAge(formatCacheAge(cached));
         setLoading(false);
       }
 
